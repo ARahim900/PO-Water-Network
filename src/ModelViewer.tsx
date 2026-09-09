@@ -9,8 +9,12 @@ import data from './networkData.json';
 import AnnotationOverlay from './AnnotationOverlay';
 import {projectAnnotations,type LabelFrame} from './annotations';
 import { components, componentFlight, findComponent, startFlight, advanceFlight, type ComponentItem, type Flight } from './interaction';
-import { animateWater, animateRain } from './waterAnimation';
+import { animateWater, animateRain, applyFlow } from './waterAnimation';
 import type { CameraAction, ModelSettings } from './types';
+/** Height reserved under a narrow-screen model for the numbered label list, sized for its worst case of three
+ *  rows so it clears the camera bar. Fixed on purpose: deriving it from the label count would resize the canvas,
+ *  reproject the labels and risk the two chasing each other. */
+const COMPACT_LABELS = 216;
 interface ViewerProps { settings: ModelSettings; cameraAction: CameraAction; exportSerial: number; onComponentSelect: (water: boolean, reveal: boolean) => void; }
 interface Engine { scene: THREE.Scene; camera: THREE.PerspectiveCamera; renderer: THREE.WebGLRenderer; controls: OrbitControls; model: THREE.Group; flight: Flight | null; }
 function resetCamera(engine: Engine, settings: ModelSettings, top = false): void {
@@ -69,7 +73,14 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   const light=new THREE.DirectionalLight('#FFFFFF',1.2);light.position.set(4,7,5);light.name='sunlight';light.shadow.mapSize.set(1024,1024);Object.assign(light.shadow.camera,{left:-5,right:5,top:5,bottom:-5,near:.1,far:25});light.shadow.normalBias=.005;scene.add(light);
   const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.maxPolarAngle=Math.PI*0.92;
   engine.current={scene,camera,renderer,controls,model:new THREE.Group(),flight:null}; resetCamera(engine.current,current.current);
-  const resize=new ResizeObserver(()=>{const w=container.clientWidth,h=container.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();if(engine.current)resetCamera(engine.current,current.current);});resize.observe(container);
+  let framed=false;
+  const resize=new ResizeObserver(()=>{
+   const w=container.clientWidth,h=container.clientHeight;if(!w||!h)return;
+   renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();
+   // Only frame the model on the first measurement. Later resizes — a rotated tablet, the mobile browser bar,
+   // a meeting-room display — keep whatever the reviewer is currently looking at.
+   if(!framed&&engine.current){framed=true;resetCamera(engine.current,current.current);}
+  });resize.observe(container);
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
   const cancelFlight=()=>{if(engine.current)engine.current.flight=null;};controls.addEventListener('start',cancelFlight);
   let pointerStart=new THREE.Vector2();
@@ -117,7 +128,9 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   e.scene.remove(e.model);disposeGroup(e.model);
   try {e.model=settings.view==='network'?buildNetwork(settings):buildDetail(settings);e.scene.add(e.model);const sun=e.scene.getObjectByName('sunlight');if(sun instanceof THREE.DirectionalLight)sun.castShadow=settings.view!=='network';e.model.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=settings.view!=='network';o.receiveShadow=true;}});setItems(components(e.model));setError('');const focused=e.model.getObjectByName(selectedRef.current);if(focused)e.flight=componentFlight(e.camera,e.controls,focused);else if(selectedRef.current){selectedRef.current='';setSelected('');resetCamera(e,current.current);}const cover=e.model.getObjectByName('movable-covers');if(cover)cover.position.y=oldCover??0;}
   catch(err){setError(err instanceof Error?err.message:'The model could not be generated.');}
- },[settings.option,settings.view,settings.opened,settings.weather,settings.step,settings.showBase,settings.showAssets,settings.selectedPath,settings.flow]);
+ },[settings.option,settings.view,settings.opened,settings.weather,settings.step,settings.showBase,settings.showAssets,settings.selectedPath]);
+ // The cutaway is added and removed in place. Rebuilding the whole model for it stalled the 46-route layout.
+ useEffect(()=>{const e=engine.current;if(e)applyFlow(e.model,settings.flow);},[settings.flow]);
  useEffect(()=>{if(settings.animation==='off')clock.current=0;if(settings.animation==='playing'&&clock.current===0){const height=engine.current?.model.getObjectByName('movable-covers')?.position.y??0;clock.current=Math.acos(1-Math.min(1,height/.72)*2)*4/Math.PI;}},[settings.animation]);
  useEffect(()=>{selectedRef.current='';setSelected('');if(engine.current)resetCamera(engine.current,current.current);},[settings.view,settings.option,settings.selectedPath]);
  useEffect(()=> {
@@ -141,7 +154,7 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   e.flight=componentFlight(e.camera,e.controls,object);
  };selectRef.current=select;
  return <div className="relative h-full min-h-[410px] w-full">
-  <div ref={host} className="absolute inset-0 touch-none" style={{bottom:settings.view!=='network'&&labels.width>0&&labels.width<600?280:0}}/>
+  <div ref={host} className="absolute inset-0 touch-none" style={{bottom:settings.view!=='network'&&labels.width>0&&labels.width<600?COMPACT_LABELS:0}}/>
   {settings.view!=='network'&&<AnnotationOverlay frame={labels} onSelect={select}/>}
   <div className="absolute inset-x-3 top-20 z-10 sm:top-16 flex flex-wrap items-center gap-2 rounded-[5px] border border-line bg-white p-2">
    <label htmlFor="component-focus" className="font-medium text-purple">Fly to</label>

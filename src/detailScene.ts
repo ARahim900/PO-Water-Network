@@ -4,7 +4,7 @@ import { box, pipe, label, purple } from './geometry';
 import { annotate } from './annotations';
 import { component } from './interaction';
 import { surfaceMaterial, fibreMaterial, pipeBlack, waterBlue } from './surfaceMaterials';
-import { addWater, clipPipeForWater } from './waterAnimation';
+import { applyFlow, planFlow } from './waterAnimation';
 import type { ModelSettings } from './types';
 const v=(x:number,y:number,z:number)=>new THREE.Vector3(x,y,z);
 function texturedBox(g:THREE.Group,size:number[],at:number[],kind:Parameters<typeof surfaceMaterial>[0]):THREE.Mesh {
@@ -24,11 +24,12 @@ export function buildDetail(s:ModelSettings):THREE.Group {
  const main=component(g,'main','OD110 water main',true),shell=new THREE.Group();main.add(shell);
  const points=[v(-1.55,centre,0),v(1.55,centre,0)];pipe(shell,points,.055,pipeBlack);
  label(main,'OD110',[-.85,centre+.066,-.025],.080);
- if(s.flow){clipPipeForWater(shell,centre);addWater(main,points,.043);}
+ planFlow(shell,main,points,.043,centre);
  annotate(g,'main','OD110 water main',[-.9,centre,0]);
- if(s.view==='tapping'&&(!channel||opened))buildTapping(g,centre,s.step,channel,s.flow);
+ if(s.view==='tapping'&&(!channel||opened))buildTapping(g,centre,s.step,channel);
  if(s.view==='weather')buildWeather(g,s);
  for(const name of ['front-walkway-cut','front-frame-cut']){const cut=g.getObjectByName(name);if(cut)cut.visible=!opened;}
+ applyFlow(g,s.flow);
  return g;
 }
 function walkway(g:THREE.Group):void {
@@ -71,7 +72,7 @@ function buildBurial(g:THREE.Group):void {
   ['paving','Interlocking walkway paving',[3.2,.035,.3],[0,-.0175,-.15],'paving']];
  for(const [id,title,size,at,kind] of layers){texturedBox(component(g,id,title),size,at,kind);annotate(g,id,title,[id==='bedding'?-.8:.9,at[1],id==='bedding'?.2:0]);}
 }
-function buildTapping(g:THREE.Group,y:number,step:number,channel:boolean,flow:boolean):void {
+function buildTapping(g:THREE.Group,y:number,step:number,channel:boolean):void {
  if(step<2)return;
  const fitting=component(g,'fitting','Fused tapping fitting',true);
  box(fitting,[.14,.045,.13],[0,y+.062,0],pipeBlack);pipe(fitting,[v(0,y+.06,0),v(0,y+.17,0)],.027,pipeBlack);
@@ -81,7 +82,7 @@ function buildTapping(g:THREE.Group,y:number,step:number,channel:boolean,flow:bo
  const points=channel?[v(0,y+.12,0),v(.07,y+.12,.12),v(-.04,y+.12,.25),v(0,y+.12,.40),v(0,y+.12,1.12)]:[v(0,y+.12,0),v(0,y+.12,1.12)];
  const curve=new THREE.CatmullRomCurve3(points),route=curve.getPoints(60);pipe(shell,route,.0125,pipeBlack);
  label(service,'OD25',[0,y+.145,.80],.065);
- if(flow){clipPipeForWater(shell,y+.12);addWater(service,route,.010,12);}
+ planFlow(shell,service,route,.010,y+.12,12);
  if(channel){box(component(g,'seal','Flexible wall seal'),[.09,.09,.045],[0,y+.12,.34],'#454545');annotate(g,'flex','S-curve · movement relief',[.025,y+.12,.17]);annotate(g,'seal','Flexible wall seal',[0,y+.12,.34]);}
  const meter=component(g,'meter','Retained villa meter',true);box(meter,[.17,.13,.2],[0,y+.12,1.14],'#E5E7EB');
  annotate(g,'service','OD25 to retained meter',[0,y+.12,.95]);

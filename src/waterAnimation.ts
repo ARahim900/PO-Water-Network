@@ -1,8 +1,28 @@
 import * as THREE from 'three';
-import { pipe } from './geometry';
+import { disposeGroup, pipe } from './geometry';
 import { waterBlue } from './surfaceMaterials';
 interface Stream { points: THREE.Vector3[]; lengths: number[]; total: number; radius: number; particles: THREE.InstancedMesh; }
+interface FlowPlan { parent: THREE.Group; points: THREE.Vector3[]; radius: number; count: number; level: number; }
 const streams = new WeakMap<THREE.Object3D,Stream>();
+/** Record what the water cutaway would look like without building it. applyFlow adds or removes it later,
+ *  so toggling the cutaway no longer forces the whole model to be rebuilt. */
+export function planFlow(shell: THREE.Group, parent: THREE.Group, points: THREE.Vector3[], radius: number, level: number, count = 22): void {
+ shell.userData.flowPlan = {parent,points,radius,count,level} as FlowPlan;
+}
+export function applyFlow(model: THREE.Group, on: boolean): void {
+ const shells: THREE.Group[] = [];
+ model.traverse(o=>{if(o.userData.flowPlan)shells.push(o as THREE.Group);});
+ for(const shell of shells){
+  const plan=shell.userData.flowPlan as FlowPlan;
+  const existing=plan.parent.children.find(c=>c.name==='flow-water');
+  if(on===!!existing)continue;
+  if(on){clipPipeForWater(shell,plan.level);addWater(plan.parent,plan.points,plan.radius,plan.count);}
+  else {
+   shell.traverse(o=>{if(o instanceof THREE.Mesh){const m=o.material as THREE.MeshStandardMaterial;m.clippingPlanes=null;m.needsUpdate=true;}});
+   if(existing){existing.removeFromParent();disposeGroup(existing as THREE.Group);}
+  }
+ }
+}
 export function addWater(parent: THREE.Group, points: THREE.Vector3[], radius: number, count = 22): void {
  const water = new THREE.Group();water.name='flow-water';parent.add(water);
  pipe(water,points,radius,waterBlue);

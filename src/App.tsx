@@ -1,22 +1,29 @@
-import { useState } from 'react';
-import { Box, Cable, CloudRain, Download, Home, Layers, Minus, Plus, RotateCcw, RotateCw, Scan, SlidersHorizontal, Play, Pause } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Box, Cable, CloudRain, Download, Home, Layers, Link2, Minus, Plus, RotateCcw, RotateCw, Scan, SlidersHorizontal, Play, Pause } from 'lucide-react';
 import ModelViewer from './ModelViewer';
 import EvidencePanel from './EvidencePanel';
 import { caption, steps } from './content';
+import { readSettings, writeSettings } from './urlState';
 import data from './networkData.json';
 import type { CameraAction, ModelSettings, Option, View, Weather } from './types';
 const views: {id:View;label:string;icon:typeof Box}[]=[{id:'network',label:'Zone Five layout',icon:Layers},{id:'section',label:'Pipe installation',icon:Box},{id:'tapping',label:'Villa tapping',icon:Cable},{id:'weather',label:'Rain & sand',icon:CloudRain}];
-const initial:ModelSettings={option:'channel',view:'section',opened:false,weather:'dry',step:0,showBase:true,showAssets:true,selectedPath:'all',animation:'off',flow:false,flowPaused:false};
 export default function App() {
- const [settings,setSettings]=useState<ModelSettings>(initial);
+ const [settings,setSettings]=useState<ModelSettings>(()=>readSettings());
  const [camera,setCamera]=useState<CameraAction>({kind:'home',serial:0});
  const [exportSerial,setExportSerial]=useState(0);
+ const [linkNote,setLinkNote]=useState('');
  const info=caption(settings);
+ useEffect(()=>writeSettings(settings),[settings]);
+ const copyLink=async()=>{
+  try {await navigator.clipboard.writeText(window.location.href);setLinkNote('Link to this view copied.');}
+  catch {setLinkNote('Copy blocked by the browser. Use the address bar instead.');}
+  window.setTimeout(()=>setLinkNote(''),4000);
+ };
  const patch=(value:Partial<ModelSettings>)=>setSettings(s=>({...s,...value,...(('view' in value||'option' in value||'opened' in value)?{animation:'off' as const}:{})}));
  const move=(kind:CameraAction['kind'])=>setCamera(c=>({kind,serial:c.serial+1}));
  return <main className="mx-auto max-w-[1536px]">
   <header className="flex flex-wrap items-center justify-between gap-3 bg-purple px-5 py-4 text-white md:px-8"><div className="eyebrow">Muscat Bay <span className="ml-2 font-normal tracking-normal">/ Assets & Operations</span></div><span className="text-[14px]">Management review · Concept only</span></header>
-  <section className="flex flex-wrap items-end justify-between gap-4 px-5 py-6 md:px-8"><div><p className="eyebrow text-ink">Zone Five / water network</p><h1 className="mt-1 text-3xl md:text-4xl">Explore the network in motion.</h1><p className="mt-2">Select a component to fly closer. Inspect materials, access and water movement.</p></div><button onClick={()=>setExportSerial(v=>v+1)} className="control"><Download size={18}/>Download static 3D view</button></section>
+  <section className="flex flex-wrap items-end justify-between gap-4 px-5 py-6 md:px-8"><div><p className="eyebrow text-ink">Zone Five / water network</p><h1 className="mt-1 text-3xl md:text-4xl">Explore the network in motion.</h1><p className="mt-2">Select a component to fly closer. Inspect materials, access and water movement.</p></div><div className="flex flex-col items-start gap-2"><div className="flex flex-wrap gap-2"><button onClick={copyLink} className="control"><Link2 size={18}/>Copy link to this view</button><button onClick={()=>setExportSerial(v=>v+1)} className="control"><Download size={18}/>Download static 3D view</button></div><p aria-live="polite" className="min-h-5 text-purple">{linkNote}</p></div></section>
   <div className="mx-5 mb-5 flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-line py-3 md:mx-8"><strong className="text-purple">Recommendation: Option One — buried</strong><span>Fewer components to maintain.</span><span>Channel benefit: access without trench excavation.</span></div>
   <div className="px-5 md:px-8"><div role="group" aria-label="Installation option" className="inline-flex flex-wrap gap-2">{(['buried','channel'] as Option[]).map((o,i)=><button key={o} aria-pressed={settings.option===o} className={`control ${settings.option===o?'selected':''}`} onClick={()=>patch({option:o})}>Option {i+1} · {o==='buried'?'Buried pipeline':'Covered channel'}</button>)}</div>
    <nav aria-label="Model views" className="mt-5 flex flex-wrap gap-x-5 gap-y-2 border-b border-line">{views.map(({id,label,icon:Icon})=><button key={id} aria-pressed={settings.view===id} onClick={()=>patch({view:id})} className={`flex min-h-12 items-center gap-2 border-b-3 px-1 py-2 font-medium ${settings.view===id?'border-purple text-purple':'border-transparent text-ink'}`}><Icon size={18}/>{label}</button>)}</nav>
@@ -24,7 +31,7 @@ export default function App() {
   <section className="grid gap-0 px-5 pb-6 md:px-8 lg:grid-cols-[minmax(0,1fr)_315px]">
    <div className="relative mt-4 overflow-hidden rounded-[10.5px] border border-line bg-paper">
     <div className="absolute left-3 top-3 z-10 max-w-[85%] rounded-[5px] border border-line bg-white px-3 py-2 text-[14px]">{settings.view==='network'?'Source CAD alignment · route widths enlarged':'Typical detail · concept materials and dimensions'}</div>
-    <div className="h-[640px] md:h-[620px]"><ModelViewer settings={settings} cameraAction={camera} exportSerial={exportSerial} onComponentSelect={(water,reveal)=>patch({animation:'paused',...water?{flow:true}:{},...reveal?{opened:true,step:Math.max(settings.step,3)}:{}})}/></div>
+    <div className="h-[720px] md:h-[620px]"><ModelViewer settings={settings} cameraAction={camera} exportSerial={exportSerial} onComponentSelect={(water,reveal)=>patch({animation:'paused',...water?{flow:true}:{},...reveal?{opened:true,step:Math.max(settings.step,3)}:{}})}/></div>
     <div className="absolute bottom-3 left-3 right-3 z-10 flex flex-wrap items-center justify-between gap-2"><div role="group" aria-label="Camera controls" className="flex gap-1 rounded-[5px] border border-line bg-white p-1">
      <button className="control border-0 px-2" aria-label="Reset or focus camera" title="Reset / focus selected route" onClick={()=>move('home')}><Home size={18}/></button>
      <button className="control border-0 px-2" aria-label="Top view" title="Top view" onClick={()=>move('top')}><Scan size={18}/></button>
@@ -32,7 +39,7 @@ export default function App() {
      <button className="control border-0 px-2" aria-label="Rotate right" onClick={()=>move('right')}><RotateCw size={18}/></button>
      <button className="control border-0 px-2" aria-label="Zoom in" onClick={()=>move('in')}><Plus size={18}/></button>
      <button className="control border-0 px-2" aria-label="Zoom out" onClick={()=>move('out')}><Minus size={18}/></button>
-    </div><span className="rounded-[5px] bg-white px-2 py-1 text-[14px]">Drag to orbit · Scroll / pinch to zoom</span></div>
+    </div><span className="hidden rounded-[5px] bg-white px-2 py-1 text-[14px] sm:inline">Drag to orbit · Scroll / pinch to zoom</span></div>
    </div>
    <aside className="flex flex-col gap-5 pt-5 lg:pl-6">
     <div aria-live="polite"><h2 className="text-2xl leading-snug">{info.title}</h2><p className="mt-3">{info.body}</p></div>
