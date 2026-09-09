@@ -1,0 +1,15 @@
+import type { Caption, ModelSettings } from './types';
+export const steps = ['Locate connection','Open work area','Fuse and tap','Connect service','Test and restore'];
+const tapping: Caption[] = [
+ {title:'1. Locate the connection',body:'Verify the live main and retained meter. Agree the shutdown, resident access and fire arrangements before work.'},
+ {title:'2. Expose sufficient working length',body:'Buried: excavate and support the trench. Channel: lift enough covers and protect the open walkway. Fittings, scrapers and clamps must fit.'},
+ {title:'3. Prepare, fuse, cool and tap',body:'Use the selected manufacturer’s preparation, fusion and tapping method. The fitting shown is generic; its actual dimensions and tool clearances remain unverified.'},
+ {title:'4. Connect to the retained villa meter',body:'Use the OD25 service route. Channel: the specified S-curve provides movement flexibility, not venting. Use a flexible sealed wall exit; verify the bend radius and fit. The illustrated service shape is not a fabrication detail.'},
+ {title:'5. Test before restoration',body:'Complete the approved pressure, hygiene and restoration checks. Reinstate the trench or refit covers. This is a visual sequence, not a work instruction.'},
+];
+export function caption(s: ModelSettings): Caption {
+ if(s.view==='network') return {title:'Same network. Different housing.',body:'Both alternatives retain the same proposed main and villa-service routing. Grey linework comes from the as-built background. Select a main or villa, then choose Focus, to inspect its route.'};
+ if(s.view==='tapping')return tapping[s.step];
+ if(s.view==='weather')return s.option==='channel'?{title:'Collection still needs a discharge route',body:'Your intent is a sloping floor to simple low-point or corner collection. Actual levels, falls and an outlet are unresolved. Rain and sand shown here are qualitative illustrations; no quantity or drainage capacity is predicted.'}:{title:'Fewer exposed components to maintain',body:'Conventional burial avoids a continuous channel, its covers and its drainage points. It still needs correct bedding, utility clearances and repair excavation. Rain and sand symbols do not represent measured conditions.'};
+ return s.option==='buried'?{title:'Option One: simpler routine operation',body:'The cut-away exposes sand or fine granular bedding and surround, compacted backfill, pavement sub-base and paving. Material grading and layer thicknesses remain subject to approval. Future repairs require excavation and reinstatement. The 1,000 mm walkway cover and 600 mm trench width are project pricing assumptions.'}:{title:'Option Two: access has conditions',body:'The 600 × 450 mm clear channel provides access when covers are lifted. It also adds covers, frames, supports and drainage to maintain. Working space must be demonstrated with actual fittings and tools.'};
+}
