@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Tags } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { buildNetwork } from './networkScene';
 import { buildDetail } from './detailScene';
@@ -79,8 +80,15 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   renderer.domElement.setAttribute('aria-label','Interactive 3D model. Use the adjacent view and camera buttons, or drag to rotate and scroll to zoom.');
   renderer.domElement.setAttribute('role','img'); container.appendChild(renderer.domElement);
   const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(42,1,0.01,3000);
-  scene.add(new THREE.HemisphereLight('#FFFFFF','#6B7280',1.8));
-  const light=new THREE.DirectionalLight('#FFFFFF',1.2);light.position.set(4,7,5);light.name='sunlight';light.shadow.mapSize.set(1024,1024);Object.assign(light.shadow.camera,{left:-5,right:5,top:5,bottom:-5,near:.1,far:25});light.shadow.normalBias=.005;scene.add(light);
+  // Sun from the front right, a weak fill from behind so chamfers and studs read on their shaded side too, and a
+  // soft studio environment that gives the resin cover and the pipes something to reflect. Flat sky light alone
+  // hides surface relief, which is why the paving and covers used to look like painted card.
+  scene.add(new THREE.HemisphereLight('#FFFFFF','#6B7280',1.0));
+  const light=new THREE.DirectionalLight('#FFFFFF',1.45);light.position.set(4,7,5);light.name='sunlight';light.shadow.mapSize.set(1024,1024);Object.assign(light.shadow.camera,{left:-5,right:5,top:5,bottom:-5,near:.1,far:25});light.shadow.normalBias=.005;scene.add(light);
+  const fill=new THREE.DirectionalLight('#DCE6F2',.4);fill.position.set(-5,3,-4);scene.add(fill);
+  let environment:THREE.WebGLRenderTarget|null=null;
+  const applyEnvironment=()=>{environment?.dispose();const pmrem=new THREE.PMREMGenerator(renderer);environment=pmrem.fromScene(new RoomEnvironment(),.04);pmrem.dispose();scene.environment=environment.texture;scene.environmentIntensity=.28;};
+  applyEnvironment();
   const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.maxPolarAngle=Math.PI*0.92;
   engine.current={scene,camera,renderer,controls,model:new THREE.Group(),flight:null}; resetCamera(engine.current,current.current);
   let measured=false;
@@ -147,11 +155,12 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
    renderer.setSize(container.clientWidth,container.clientHeight);
    renderer.shadowMap.enabled=!coarse;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
    renderer.localClippingEnabled=true;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
+   applyEnvironment();                                                             // the pre-filtered environment lived on the GPU only
    setError('');
   };
   renderer.domElement.addEventListener('webglcontextlost',contextLost);
   renderer.domElement.addEventListener('webglcontextrestored',contextRestored);
-  return ()=>{cancelAnimationFrame(frame);resize.disconnect();intersection.disconnect();controls.removeEventListener('start',cancelFlight);controls.dispose();renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('pointerdown',pointerDown);renderer.domElement.removeEventListener('pointerup',pointerUp);if(engine.current)disposeGroup(engine.current.model);renderer.dispose();renderer.forceContextLoss();renderer.domElement.removeEventListener('webglcontextlost',contextLost);renderer.domElement.removeEventListener('webglcontextrestored',contextRestored);renderer.domElement.remove();engine.current=null;};
+  return ()=>{cancelAnimationFrame(frame);resize.disconnect();intersection.disconnect();controls.removeEventListener('start',cancelFlight);controls.dispose();renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('pointerdown',pointerDown);renderer.domElement.removeEventListener('pointerup',pointerUp);if(engine.current)disposeGroup(engine.current.model);environment?.dispose();scene.environment=null;renderer.dispose();renderer.forceContextLoss();renderer.domElement.removeEventListener('webglcontextlost',contextLost);renderer.domElement.removeEventListener('webglcontextrestored',contextRestored);renderer.domElement.remove();engine.current=null;};
  },[]);
  useEffect(()=> {
   const e=engine.current;if(!e)return;
