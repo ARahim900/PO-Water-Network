@@ -4,7 +4,7 @@ import { box, pipe, label, purple } from './geometry';
 import { annotate } from './annotations';
 import { component } from './interaction';
 import { surfaceMaterial, fibreMaterial, pipeBlack, waterBlue } from './surfaceMaterials';
-import { applyFlow, planFlow } from './waterAnimation';
+import { planFlow, setFlow } from './waterAnimation';
 import type { ModelSettings } from './types';
 const v=(x:number,y:number,z:number)=>new THREE.Vector3(x,y,z);
 function texturedBox(g:THREE.Group,size:number[],at:number[],kind:Parameters<typeof surfaceMaterial>[0]):THREE.Mesh {
@@ -29,8 +29,7 @@ export function buildDetail(s:ModelSettings):THREE.Group {
  if(s.view==='tapping'&&(!channel||opened))buildTapping(g,centre,s.step,channel);
  if(s.view==='weather')buildWeather(g,s);
  for(const name of ['front-walkway-cut','front-frame-cut']){const cut=g.getObjectByName(name);if(cut)cut.visible=!opened;}
- applyFlow(g,s.flow);
- return g;
+ setFlow(g,s.flow);return g;
 }
 function walkway(g:THREE.Group):void {
  const paving=component(g,'paving','Interlocking walkway paving');
