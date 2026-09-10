@@ -27,7 +27,8 @@ export function readSettings(hash: string = window.location.hash): ModelSettings
  };
 }
 /** Mirrors the current view into the address bar so a reviewer can send the exact view they are describing.
- *  replaceState, not pushState: browsing the model should not fill the back button. */
+ *  replaceState, not pushState: browsing the model should not fill the back button. Some hosts — a sandboxed
+ *  iframe, an embedded viewer — refuse history writes; the model must still work there, so failure is ignored. */
 export function writeSettings(s: ModelSettings): void {
  const q = new URLSearchParams();
  q.set('option',s.option); q.set('view',s.view);
@@ -36,5 +37,5 @@ export function writeSettings(s: ModelSettings): void {
  if(s.view === 'network'){ q.set('route',s.selectedPath); q.set('base',s.showBase?'1':'0'); q.set('assets',s.showAssets?'1':'0'); }
  else if(s.opened) q.set('open','1');
  if(s.flow) q.set('flow','1');
- window.history.replaceState(null,'',`#${q}`);
+ try { window.history.replaceState(null,'',`#${q}`); } catch { /* history is unavailable in this host */ }
 }
