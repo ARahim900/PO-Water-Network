@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 export interface ComponentItem { id: string; title: string; water: boolean; }
-export interface Flight { start: number; from: THREE.Vector3; to: THREE.Vector3; targetFrom: THREE.Vector3; targetTo: THREE.Vector3; }
+export interface Flight { start: number; from: THREE.Vector3; to: THREE.Vector3; targetFrom: THREE.Vector3; targetTo: THREE.Vector3; duration?:number; }
 export function component(parent: THREE.Group, id: string, title: string, water = false): THREE.Group {
  const group = new THREE.Group();group.name = id;group.userData.component = {id,title,water};parent.add(group);return group;
 }
@@ -33,7 +33,7 @@ export function componentFlight(camera: THREE.PerspectiveCamera, controls: Orbit
  return boundsFlight(camera,controls,new THREE.Box3().setFromObject(object));
 }
 export function advanceFlight(flight: Flight, camera: THREE.PerspectiveCamera, controls: OrbitControls, reduced: boolean): boolean {
- const t = reduced ? 1 : Math.min(1,(performance.now()-flight.start)/1500);const ease=t*t*t*(t*(t*6-15)+10);
+ const t = reduced ? 1 : Math.min(1,(performance.now()-flight.start)/(flight.duration??1500));const ease=t*t*t*(t*(t*6-15)+10);
  camera.position.lerpVectors(flight.from,flight.to,ease);camera.position.y+=Math.sin(Math.PI*t)*flight.from.distanceTo(flight.to)*.12;
  controls.target.lerpVectors(flight.targetFrom,flight.targetTo,ease);return t < 1;
 }

@@ -7,11 +7,11 @@ import { surfaceMaterial, fibreMaterial, pipeBlack, waterBlue } from './surfaceM
 import { planFlow, setFlow } from './waterAnimation';
 import type { ModelSettings } from './types';
 const v=(x:number,y:number,z:number)=>new THREE.Vector3(x,y,z);
-function texturedBox(g:THREE.Group,size:number[],at:number[],kind:Parameters<typeof surfaceMaterial>[0]):THREE.Mesh {
+export function texturedBox(g:THREE.Group,size:number[],at:number[],kind:Parameters<typeof surfaceMaterial>[0]):THREE.Mesh {
  const mesh=box(g,size,at,'#FFFFFF');(mesh.material as THREE.Material).dispose();
  const top=surfaceMaterial(kind,size[0],size[2]);
  if(kind==='paving'){
-  const end=surfaceMaterial(kind,size[2],size[1]),side=surfaceMaterial(kind,size[0],size[1]);
+  const end=surfaceMaterial('concrete',size[2],size[1]),side=surfaceMaterial('concrete',size[0],size[1]);
   mesh.material=[end,end,top,top,side,side];
  }else mesh.material=top;
  return mesh;
@@ -32,11 +32,11 @@ export function buildDetail(s:ModelSettings):THREE.Group {
  setFlow(g,s.flow);return g;
 }
 function walkway(g:THREE.Group):void {
- const paving=component(g,'paving','Interlocking walkway paving');
+ const paving=component(g,'paving','Brown / grey hexagonal paving · pattern indicative');
  texturedBox(paving,[3.5,.10,.6],[0,-.05,-.69],'paving');
  const front=new THREE.Group();front.name='front-walkway-cut';paving.add(front);
  texturedBox(front,[3.5,.10,.6],[0,-.05,.69],'paving');
- annotate(g,'paving','Interlocking walkway',[1.25,0,-.72]);
+ annotate(g,'paving','Brown / grey hexagonal paving',[1.25,0,-.72]);
 }
 function buildChannel(g:THREE.Group,opened:boolean):void {
  const structure=component(g,'channel','Concrete channel / floor');
@@ -68,21 +68,25 @@ function buildBurial(g:THREE.Group):void {
   ['surround','Fine granular surround',[3.2,.25,.3],[0,-1.015,-.15],'sand'],
   ['backfill','Compacted backfill',[3.2,.73,.3],[0,-.53,-.15],'backfill'],
   ['subbase','Pavement sub-base',[3.2,.13,.3],[0,-.10,-.15],'concrete'],
-  ['paving','Interlocking walkway paving',[3.2,.035,.3],[0,-.0175,-.15],'paving']];
+  ['paving','Brown / grey hexagonal paving',[3.2,.035,.3],[0,-.0175,-.15],'paving']];
  for(const [id,title,size,at,kind] of layers){texturedBox(component(g,id,title),size,at,kind);annotate(g,id,title,[id==='bedding'?-.8:.9,at[1],id==='bedding'?.2:0]);}
 }
 function buildTapping(g:THREE.Group,y:number,step:number,channel:boolean):void {
  if(step<2)return;
- const fitting=component(g,'fitting','Fused tapping fitting',true);
- box(fitting,[.14,.045,.13],[0,y+.062,0],pipeBlack);pipe(fitting,[v(0,y+.06,0),v(0,y+.17,0)],.027,pipeBlack);
- annotate(g,'fitting','Fused tapping fitting',[0,y+.15,0]);
+ const fitting=component(g,'fitting','Top-mounted fused tee / side outlet · indicative',true);
+ const saddle=new THREE.Mesh(new THREE.CylinderGeometry(.064,.064,.14,24,1,true,0,Math.PI),new THREE.MeshStandardMaterial({color:pipeBlack,roughness:.78,side:THREE.DoubleSide}));
+ saddle.rotation.z=Math.PI/2;saddle.position.set(0,y,0);fitting.add(saddle);
+ pipe(fitting,[v(0,y+.055,0),v(0,y+.17,0)],.027,pipeBlack);
+ pipe(fitting,[v(0,y+.17,0),v(0,y+.185,0)],.034,pipeBlack);
+ pipe(fitting,[v(0,y+.12,0),v(0,y+.12,.085)],.018,pipeBlack);
+ annotate(g,'fitting','Top tapping / side outlet',[0,y+.17,0]);
  if(step<3)return;
- const service=component(g,'service','OD25 villa service / movement loop',true),shell=new THREE.Group();service.add(shell);
- const points=channel?[v(0,y+.12,0),v(.07,y+.12,.12),v(-.04,y+.12,.25),v(0,y+.12,.40),v(0,y+.12,1.12)]:[v(0,y+.12,0),v(0,y+.12,1.12)];
- const curve=new THREE.CatmullRomCurve3(points),route=curve.getPoints(60);pipe(shell,route,.0125,pipeBlack);
+ const service=component(g,'service','OD25 PE100 service · straight concept',true),shell=new THREE.Group();service.add(shell);
+ const route=[v(0,y+.12,.085),v(0,y+.12,1.12)];
+ pipe(shell,route,.0125,pipeBlack);
  label(service,'OD25',[0,y+.145,.80],.065);
  planFlow(shell,service,route,.010,y+.12,12);
- if(channel){box(component(g,'seal','Flexible wall seal'),[.09,.09,.045],[0,y+.12,.34],'#454545');annotate(g,'flex','S-curve · movement relief',[.025,y+.12,.17]);annotate(g,'seal','Flexible wall seal',[0,y+.12,.34]);}
+ if(channel){box(component(g,'seal','Flexible wall seal'),[.09,.09,.045],[0,y+.12,.34],'#454545');annotate(g,'seal','Flexible wall seal',[0,y+.12,.34]);}
  const meter=component(g,'meter','Retained villa meter',true);box(meter,[.17,.13,.2],[0,y+.12,1.14],'#E5E7EB');
  annotate(g,'service','OD25 to retained meter',[0,y+.12,.95]);
  g.userData.annotations=(g.userData.annotations as {id:string}[]).filter(n=>!['frame','support','channel','subbase','backfill','bedding','surround'].includes(n.id));

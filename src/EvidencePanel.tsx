@@ -13,7 +13,7 @@ export default function EvidencePanel() {
    {data.sources.map(s=><p key={s.file} className="break-all"><strong>CAD source:</strong> {s.file}<br/><span>SHA-256: {s.sha256}</span></p>)}
    <p><strong>Model origin:</strong> E {data.origin[0]} m, N {data.origin[1]} m. 3D display uses local east, vertical and negative north. Z = 0 is a display reference, not a surveyed level. The CAD export retains source eastings/northings and uses Z = 0 for unresolved route levels.</p>
    <p><strong>Drainage:</strong> no pumps, chamber count, outfall location or invented gradient. A chamber alone does not establish disposal. Actual corner drainage needs a surveyed profile and an agreed discharge point.</p>
-   <p><strong>Technical references:</strong> <a className="underline" target="_blank" rel="noreferrer" href="https://www.gfps.com/content/dam/gfps/com/manuals/en/MA_00149_02_Tapping_saddle_ELGEF_Plus_Update_Print.pdf">GF tapping guidance</a> · <a className="underline" target="_blank" rel="noreferrer" href="https://www.plasticpipe.org/Shared_Content/Shop/PE-Handbook.aspx">PPI PE Handbook</a>. Product selection and installation methods require project approval.</p>
+   <p><strong>Technical references:</strong> <a className="underline" target="_blank" rel="noreferrer" href="https://www.gfps.com/content/dam/gfps/us/products/joining-technology/electrofusion/msa-340/gfcp-us-electrofusion-installation-training-manual-en.pdf">GF electrofusion installation guidance</a> · <a className="underline" target="_blank" rel="noreferrer" href="https://www.plasticpipe.org/Shared_Content/Shop/PE-Handbook.aspx">PPI PE Handbook</a>. Product selection and installation methods require project approval.</p>
   </div></details>
  </section>;
 }

@@ -1,0 +1,10 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# The app is a single self-contained page with hash-based view links, so every path
+# serves the same document; there are no server routes to fall through to.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -5,12 +5,14 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { buildNetwork } from './networkScene';
 import { buildDetail } from './detailScene';
+import { buildRun } from './runScene';
 import { disposeGroup } from './geometry';
 import data from './networkData.json';
 import AnnotationOverlay from './AnnotationOverlay';
 import {projectAnnotations,type LabelFrame} from './annotations';
 import { components, componentFlight, boundsFlight, findComponent, startFlight, advanceFlight, type ComponentItem, type Flight } from './interaction';
 import { animateWater, animateRain, setFlow } from './waterAnimation';
+import { networkTourStops, type NetworkTour } from './networkTour';
 import type { CameraAction, ModelSettings } from './types';
 interface ViewerProps { settings: ModelSettings; cameraAction: CameraAction; exportSerial: number; onComponentSelect: (water: boolean, reveal: boolean) => void; }
 interface Engine { scene: THREE.Scene; camera: THREE.PerspectiveCamera; renderer: THREE.WebGLRenderer; controls: OrbitControls; model: THREE.Group; flight: Flight | null; }
@@ -25,13 +27,13 @@ function resetCamera(engine: Engine, settings: ModelSettings, top = false): void
  }
  engine.flight=engine.model.children.length&&!selected?boundsFlight(engine.camera,engine.controls,new THREE.Box3().setFromObject(engine.model),top):startFlight(engine.camera,engine.controls,target,distance,top);
  engine.camera.near = network ? 0.05 : 0.005; engine.camera.far = 3000; engine.camera.updateProjectionMatrix();
- engine.controls.minDistance = network ? 2 : 0.5; engine.controls.maxDistance = network ? 1000 : 14; engine.controls.update();
+ engine.controls.minDistance = network ? 2 : 0.5; engine.controls.maxDistance = network ? 1000 : settings.view === 'run' ? 40 : 14; engine.controls.update();
 }
 async function exportModel(engine: Engine, settings: ModelSettings): Promise<void> {
  const exporter = new GLTFExporter();
  engine.model.userData = { ...engine.model.userData, status: 'Concept only; not for construction or hydraulic analysis', planarCrs: 'EPSG:32640', sourceOrigin: data.origin, note: settings.view === 'network' ? 'Route widths and symbols enlarged for visibility. Vertical positions illustrative.' : 'Generic detail; fitting, structural and bedding dimensions not approved.' };
  const staticSettings={...settings,flow:false};
- const exportRoot=settings.view==='network'?buildNetwork(staticSettings):buildDetail(staticSettings);
+ const exportRoot=settings.view==='network'?buildNetwork(staticSettings):settings.view==='run'?buildRun(staticSettings):buildDetail(staticSettings);
  exportRoot.userData.note='Static geometry export. Flyover, shader cutaways and water animations are available in the interactive HTML.';
  const sprites: THREE.Sprite[] = [];
  exportRoot.traverse(object => { if(object instanceof THREE.Sprite) sprites.push(object); });
@@ -57,14 +59,23 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
  const selectRef=useRef<(id:string)=>void>(()=>{});
  const clock=useRef(0);const lastLabels=useRef('');
  const [error,setError] = useState(''); const [exporting,setExporting] = useState(false);
+ const tour=useRef<NetworkTour|null>(null);const [tourStatus,setTourStatus]=useState('');
  current.current=settings;
  useEffect(()=> {
   const container=host.current; if(!container) return;
-  let renderer: THREE.WebGLRenderer;
-  try {renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true});}
-  catch(e) {setError(e instanceof Error?e.message:'WebGL could not start.');return;}
-  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.localClippingEnabled=true;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,window.matchMedia('(pointer: coarse)').matches?1.5:2)); renderer.setClearColor('#F7F8F9');
+  // iPad and iPhone refuse a context outright when the GPU memory budget is tight, so ask for the
+  // cheapest thing that will do the job and step down again rather than giving up on the first refusal.
+  // Multisampling multiplies the back buffer, so it is off on touch; preserveDrawingBuffer retained a
+  // second full-size buffer every frame and nothing needs it — the 3D export rebuilds its own scene
+  // and never reads the canvas back.
+  const coarse=window.matchMedia('(pointer: coarse)').matches;
+  let renderer: THREE.WebGLRenderer|null=null, downgraded=false;
+  for(const options of [{antialias:!coarse,alpha:false},{antialias:false,alpha:false}]){
+   try {renderer=new THREE.WebGLRenderer(options);break;} catch {downgraded=true;}
+  }
+  if(!renderer){setError('This device could not start 3D graphics. Close other browser tabs and reload; on an iPad or phone, closing other apps frees graphics memory.');return;}
+  renderer.shadowMap.enabled=!coarse;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.localClippingEnabled=true;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,downgraded?1:coarse?1.5:2)); renderer.setClearColor('#F7F8F9');
   renderer.domElement.setAttribute('aria-label','Interactive 3D model. Use the adjacent view and camera buttons, or drag to rotate and scroll to zoom.');
   renderer.domElement.setAttribute('role','img'); container.appendChild(renderer.domElement);
   const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(42,1,0.01,3000);
@@ -73,10 +84,10 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.maxPolarAngle=Math.PI*0.92;
   engine.current={scene,camera,renderer,controls,model:new THREE.Group(),flight:null}; resetCamera(engine.current,current.current);
   let measured=false;
-  const resize=new ResizeObserver(()=>{const w=container.clientWidth,h=container.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();if(!measured&&engine.current){measured=true;resetCamera(engine.current,current.current);}});resize.observe(container);
+  const resize=new ResizeObserver(()=>{const w=container.clientWidth,h=container.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();if(!measured&&engine.current){measured=true;resetCamera(engine.current,current.current);const initial=engine.current.flight;if(initial){camera.position.copy(initial.to);controls.target.copy(initial.targetTo);engine.current.flight=null;controls.update();}}});resize.observe(container);
   let visible=true;const intersection=new IntersectionObserver(entries=>{visible=entries[0]?.isIntersecting??true;});intersection.observe(container);
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
-  const cancelFlight=()=>{if(engine.current)engine.current.flight=null;};controls.addEventListener('start',cancelFlight);
+  const cancelFlight=()=>{if(engine.current)engine.current.flight=null;tour.current=null;setTourStatus('');};controls.addEventListener('start',cancelFlight);
   const pointerStart=new THREE.Vector2();const pointers=new Set<number>();let multiTouch=false;
   const pointerDown=(event:PointerEvent)=>{pointers.add(event.pointerId);if(pointers.size===1){pointerStart.set(event.clientX,event.clientY);multiTouch=false;}else multiTouch=true;};
   const pointerCancel=(event:PointerEvent)=>{pointers.delete(event.pointerId);multiTouch=true;};
@@ -106,7 +117,18 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
     const front=model.getObjectByName('front-walkway-cut');if(front&&covers)front.visible=covers.position.y<.05;
     if(!config.flowPaused&&!reduced.matches)waterTime+=dt;
     animateWater(model,waterTime);animateRain(model,waterTime);
-    const e=engine.current;if(e?.flight&&!advanceFlight(e.flight,camera,controls,reduced.matches))e.flight=null;
+    const e=engine.current;
+    if(tour.current&&e){
+     const active=tour.current;
+     if(reduced.matches){tour.current=null;setTourStatus('');}
+     else if(now>=active.nextAt){
+      active.index++;
+      const stop=active.stops[active.index];
+      if(stop){e.flight={...boundsFlight(camera,controls,stop.bounds,stop.top),duration:2500};active.nextAt=now+4500;setTourStatus(`${active.index+1}/${active.stops.length} · ${stop.title}`);}
+      else {tour.current=null;setTourStatus('');}
+     }
+    }
+    if(e?.flight&&!advanceFlight(e.flight,camera,controls,reduced.matches))e.flight=null;
     renderer.domElement.dataset.camera=camera.position.toArray().map(n=>n.toFixed(3)).join(',');
     renderer.domElement.dataset.flowTime=waterTime.toFixed(3);
     model.updateMatrixWorld(true);
@@ -114,15 +136,29 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
    }
    controls.update();renderer.render(scene,camera);
   };render();
-  const contextLost=(event: Event)=>{event.preventDefault();setError('The graphics context was interrupted. Reload the viewer to restore it.');};
+  // preventDefault is what lets the browser hand the context back. iPad and iPhone drop it routinely
+  // when you switch apps or tabs, so recover on restore instead of stranding the reviewer on an error.
+  const contextLost=(event: Event)=>{event.preventDefault();setError('Graphics paused while the device reclaimed memory. Restoring…');};
+  // The renderer comes back with fresh GL state, so everything set at start-up has to be set again —
+  // without this the model returns on a black ground instead of the paper colour.
+  const contextRestored=()=>{
+   renderer.setClearColor('#F7F8F9');
+   renderer.setPixelRatio(Math.min(window.devicePixelRatio,downgraded?1:coarse?1.5:2));
+   renderer.setSize(container.clientWidth,container.clientHeight);
+   renderer.shadowMap.enabled=!coarse;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+   renderer.localClippingEnabled=true;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
+   setError('');
+  };
   renderer.domElement.addEventListener('webglcontextlost',contextLost);
-  return ()=>{cancelAnimationFrame(frame);resize.disconnect();intersection.disconnect();controls.removeEventListener('start',cancelFlight);controls.dispose();renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('pointerdown',pointerDown);renderer.domElement.removeEventListener('pointerup',pointerUp);if(engine.current)disposeGroup(engine.current.model);renderer.dispose();renderer.domElement.removeEventListener('webglcontextlost',contextLost);renderer.domElement.remove();engine.current=null;};
+  renderer.domElement.addEventListener('webglcontextrestored',contextRestored);
+  return ()=>{cancelAnimationFrame(frame);resize.disconnect();intersection.disconnect();controls.removeEventListener('start',cancelFlight);controls.dispose();renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('pointerdown',pointerDown);renderer.domElement.removeEventListener('pointerup',pointerUp);if(engine.current)disposeGroup(engine.current.model);renderer.dispose();renderer.forceContextLoss();renderer.domElement.removeEventListener('webglcontextlost',contextLost);renderer.domElement.removeEventListener('webglcontextrestored',contextRestored);renderer.domElement.remove();engine.current=null;};
  },[]);
  useEffect(()=> {
   const e=engine.current;if(!e)return;
+  tour.current=null;setTourStatus('');
   const oldCover=e.model.getObjectByName('movable-covers')?.position.y;
   e.scene.remove(e.model);disposeGroup(e.model);
-  try {e.model=settings.view==='network'?buildNetwork(settings):buildDetail(settings);e.scene.add(e.model);const sun=e.scene.getObjectByName('sunlight');if(sun instanceof THREE.DirectionalLight)sun.castShadow=settings.view!=='network';e.model.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=settings.view!=='network';o.receiveShadow=true;}});setItems(components(e.model));setError('');const focused=e.model.getObjectByName(selectedRef.current);if(focused)e.flight=componentFlight(e.camera,e.controls,focused);else if(selectedRef.current){selectedRef.current='';setSelected('');resetCamera(e,current.current);}const cover=e.model.getObjectByName('movable-covers');if(cover)cover.position.y=oldCover??0;}
+  try {e.model=settings.view==='network'?buildNetwork(settings):settings.view==='run'?buildRun(settings):buildDetail(settings);e.scene.add(e.model);const sun=e.scene.getObjectByName('sunlight');if(sun instanceof THREE.DirectionalLight)sun.castShadow=settings.view!=='network';e.model.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=settings.view!=='network';o.receiveShadow=true;}});setItems(components(e.model));setError('');const focused=e.model.getObjectByName(selectedRef.current);if(focused)e.flight=componentFlight(e.camera,e.controls,focused);else if(selectedRef.current){selectedRef.current='';setSelected('');resetCamera(e,current.current);}const cover=e.model.getObjectByName('movable-covers');if(cover)cover.position.y=oldCover??0;}
   catch(err){setError(err instanceof Error?err.message:'The model could not be generated.');}
  },[settings.option,settings.view,settings.opened,settings.weather,settings.step,settings.showBase,settings.showAssets,settings.selectedPath]);
  useEffect(()=>{if(engine.current)setFlow(engine.current.model,settings.flow);},[settings.flow]);
@@ -131,6 +167,7 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
  useEffect(()=>{selectedRef.current='';setSelected('');if(engine.current)resetCamera(engine.current,current.current);},[settings.view,settings.option,settings.selectedPath]);
  useEffect(()=> {
   const e=engine.current;if(!e)return;const kind=cameraAction.kind;
+  tour.current=null;setTourStatus('');
   if(kind==='home'||kind==='top'){resetCamera(e,current.current,kind==='top');return;}
   const delta=e.camera.position.clone().sub(e.controls.target);
   if(kind==='in'||kind==='out')delta.multiplyScalar(kind==='in'?0.8:1.25);
@@ -144,23 +181,34 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
  const select=(rawId:string)=>{
   const id=rawId==='cover'?'movable-covers':rawId==='flex'?'service':rawId;const e=engine.current;if(!e)return;
   const object=e.model.getObjectByName(id);if(!object)return;
-  selectedRef.current=id;setSelected(id);const item=items.find(item=>item.id===id);
+  tour.current=null;setTourStatus('');selectedRef.current=id;setSelected(id);const item=items.find(item=>item.id===id);
   const reveal=current.current.view!=='network'&&!id.startsWith('cover-panel-')&&!['paving','movable-covers','frame','rain-drops'].includes(id);
   selectionCallback.current((item?.water??false)&&!id.startsWith('rain'),reveal);
   e.flight=componentFlight(e.camera,e.controls,object);
  };selectRef.current=select;
+ const overview=(play=false)=>{
+  const e=engine.current;if(!e)return;
+  if(play&&tour.current){tour.current=null;e.flight=null;setTourStatus('');return;}
+  selectedRef.current='';setSelected('');tour.current=null;setTourStatus('');
+  const stops=networkTourStops(e.model),first=stops[0];
+  e.flight=boundsFlight(e.camera,e.controls,first.bounds);
+  if(play&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){e.flight.duration=2500;tour.current={stops,index:0,nextAt:performance.now()+4500};setTourStatus(`1/${stops.length} · ${first.title}`);}
+ };
  return <div className="flex h-full min-h-0 w-full flex-col">
-  <div className="flex shrink-0 items-center gap-2 border-b border-line bg-white p-2">
+  <div className="viewer-component-picker flex shrink-0 items-center gap-2 border-b border-line bg-white p-2">
    <label htmlFor="component-focus" className="sr-only">Fly to component</label>
    <select id="component-focus" value={selected} onChange={event=>select(event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-[5px] border border-line bg-white px-2 text-base"><option value="">Fly to a component…</option>{items.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select>
    <button className={`control min-w-11 px-2 ${showLabels?'selected':''}`} aria-label="Toggle model labels" aria-pressed={showLabels} title="Toggle model labels" onClick={()=>setShowLabels(v=>!v)}><Tags size={20}/></button>
   </div>
+  {settings.view==='network'&&<div className="viewer-tour-controls flex shrink-0 items-center gap-2 border-b border-line bg-white px-2 py-1"><button className="control px-2" onClick={()=>overview()}>Full layout</button><button className={`control px-2 ${tourStatus?'selected':''}`} aria-pressed={!!tourStatus} onClick={()=>overview(true)}>{tourStatus?'Stop flyover':'Start full flyover'}</button></div>}
   <div className="relative min-h-0 flex-1">
    <div ref={host} className="absolute inset-0 touch-none"/>
+   {tourStatus&&<p role="status" className="pointer-events-none absolute inset-x-2 top-2 rounded-[5px] bg-white px-3 py-1 text-[14px] text-purple">{tourStatus}</p>}
    {showLabels&&settings.view!=='network'&&<AnnotationOverlay frame={labels} onSelect={select}/>}
    {error&&<div role="alert" className="absolute inset-x-4 top-4 panel p-4 text-purple">{error}</div>}
    {exporting&&<div role="status" className="absolute bottom-4 left-4 panel p-3">Preparing 3D download…</div>}
   </div>
+  {settings.view==='tapping'&&settings.option==='channel'&&<p className="shrink-0 border-t border-line bg-white px-3 py-1 text-[14px] text-purple">Straight service concept · Movement design outstanding</p>}
   <div className="sr-only" role="status">{selected?`Viewing ${items.find(item=>item.id===selected)?.title??selected}`:'Select a component for a camera flyover.'}</div>
  </div>;
 }
