@@ -39,7 +39,7 @@ export function disposeGroup(group: THREE.Group): void {
   if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Sprite) {
    if ('geometry' in object) object.geometry.dispose();
    const materials = Array.isArray(object.material) ? object.material : [object.material];
-   for (const m of materials) { if ('map' in m && m.map instanceof THREE.Texture) m.map.dispose(); if ('bumpMap' in m && m.bumpMap instanceof THREE.Texture && (!('map' in m) || m.bumpMap !== m.map)) m.bumpMap.dispose(); m.dispose(); }
+   for (const m of materials) { if ('map' in m && m.map instanceof THREE.Texture) m.map.dispose(); if ('bumpMap' in m && m.bumpMap instanceof THREE.Texture && (!('map' in m) || m.bumpMap !== m.map)) m.bumpMap.dispose(); if ('normalMap' in m && m.normalMap instanceof THREE.Texture) m.normalMap.dispose(); m.dispose(); }
   }
  });
 }
