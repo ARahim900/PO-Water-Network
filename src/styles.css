@@ -26,3 +26,16 @@
  .explorer-expanded .camera-controls { @apply col-start-2 row-start-4 grid grid-cols-3; }
  .explorer-expanded .viewer-actions { @apply col-start-2 row-start-5 flex-nowrap; }
 }
+
+@media (max-width: 767px), (max-height: 500px) {
+ .explorer-expanded.viewer-compact :is(.viewer-options,.viewer-tabs,.camera-controls,.viewer-actions,.viewer-hint) { @apply hidden; }
+ .explorer-expanded.viewer-compact { @apply flex; }
+ .explorer-expanded.viewer-compact .viewer-stage { @apply order-1; }
+ .explorer-expanded.viewer-compact .viewer-mobile-dock { @apply order-6 flex; }
+ .viewer-mobile-dock { padding-bottom: max(.5rem, env(safe-area-inset-bottom)); }
+}
+@media (min-width: 600px) and (max-height: 500px) { .explorer-expanded:not(.viewer-compact) .viewer-mobile-dock { @apply hidden; } }
+
+@media (max-height: 500px) {
+ .explorer-expanded.viewer-compact :is(.viewer-component-picker,.viewer-tour-controls) { @apply hidden; }
+}

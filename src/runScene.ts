@@ -52,10 +52,15 @@ function chamber(g:THREE.Group,y:number):void {
 }
 /** A fused tapping on the main and a straight OD25 service to a retained meter, heading out on the cut-away side. */
 function takeoff(g:THREE.Group,id:string,title:string,at:THREE.Vector3,dir:THREE.Vector3):void {
- const fitting=component(g,`${id}-fitting`,`${title} · fused tapping fitting`,true);
- box(fitting,[.14,.045,.13],[at.x,at.y+.062,at.z],pipeBlack);pipe(fitting,[v(at.x,at.y+.06,at.z),v(at.x,at.y+.17,at.z)],.027,pipeBlack);
+ const fitting=component(g,`${id}-fitting`,`${title} · top-mounted fused tee / side outlet`,true);
+ const saddle=new THREE.Mesh(new THREE.CylinderGeometry(.064,.064,.14,24,1,true,0,Math.PI),new THREE.MeshStandardMaterial({color:pipeBlack,roughness:.78,side:THREE.DoubleSide}));
+ saddle.rotation.z=Math.PI/2;fitting.add(saddle);
+ pipe(fitting,[v(0,.055,0),v(0,.17,0)],.027,pipeBlack);
+ pipe(fitting,[v(0,.17,0),v(0,.185,0)],.034,pipeBlack);
+ pipe(fitting,[v(0,.12,0),v(0,.12,.085)],.018,pipeBlack);
+ fitting.rotation.y=Math.atan2(dir.x,dir.z);fitting.position.copy(at);
  const service=component(g,id,`${title} · OD25 service`,true),shell=new THREE.Group();service.add(shell);
- const start=v(at.x,at.y+.12,at.z),route=[start,start.clone().addScaledVector(dir,1.05)];
+ const start=v(at.x,at.y+.12,at.z),route=[start.clone().addScaledVector(dir,.085),start.clone().addScaledVector(dir,1.12)];
  pipe(shell,route,.0125,pipeBlack);planFlow(shell,service,route,.010,at.y+.12,10);
  const meterAt=start.clone().addScaledVector(dir,1.14);
  box(component(g,`${id}-meter`,`${title} · retained meter`,true),[.17,.13,.2],[meterAt.x,meterAt.y,meterAt.z],'#E5E7EB');
@@ -66,7 +71,7 @@ function takeoff(g:THREE.Group,id:string,title:string,at:THREE.Vector3,dir:THREE
 function runBurial(g:THREE.Group,y:number):void {
  const layers:[string,string,number,number,Parameters<typeof texturedBox>[3]][]=[
   ['bedding','Sand / granular bedding',.12,-.145,'sand'],['surround','Fine granular surround',.25,.04,'sand'],
-  ['backfill','Compacted backfill',.73,.525,'backfill'],['subbase','Pavement sub-base',.13,.955,'concrete'],['paving','Interlocking walkway paving',.035,1.0375,'paving']];
+  ['backfill','Compacted backfill',.73,.525,'backfill'],['subbase','Pavement sub-base',.13,.955,'concrete'],['paving','Brown / grey hexagonal paving',.035,1.0375,'paving']];
  for(const [id,title,thick,dy,kind] of layers){
   const layer=component(g,id,title);const full=id==='bedding';
   const a=LEG-BEND;                                                                    // straight part of each leg
@@ -76,14 +81,14 @@ function runBurial(g:THREE.Group,y:number):void {
   texturedBox(layer,[.35,thick,.15],[-.325,y+dy,-.225],kind);                         // corner, behind the bend
   texturedBox(layer,[.15,thick,.2],[-.225,y+dy,-.4],kind);
  }
- annotate(g,'paving','Interlocking walkway paving',[-1,y+1.05,-.15]);annotate(g,'backfill','Compacted backfill',[-3.3,y+.5,-.3]);
+ annotate(g,'paving','Brown / grey hexagonal paving',[-1,y+1.05,-.15]);annotate(g,'backfill','Compacted backfill',[-3.3,y+.5,-.3]);
 }
 /** Channel option: floor, back wall, low front kerb and walkway along each leg, joined at the corner, with lift-off
  *  cover panels — the same names the section uses, so the cover animation and front cut-aways work here too. */
 function runChannel(g:THREE.Group,y:number):void {
  const structure=component(g,'channel','Concrete channel / floor'),a=LEG-.38;
  const frontWalk=new THREE.Group();frontWalk.name='front-walkway-cut';
- const paving=component(g,'paving','Interlocking walkway paving');paving.add(frontWalk);
+ const paving=component(g,'paving','Brown / grey hexagonal paving');paving.add(frontWalk);
  const frame=component(g,'frame','Cover perimeter frame');const frontFrame=new THREE.Group();frontFrame.name='front-frame-cut';frame.add(frontFrame);
  const covers=component(g,'movable-covers','Green fibre cover panels');
  // leg A along x, leg B along z, then the corner square that joins them
@@ -108,7 +113,7 @@ function runChannel(g:THREE.Group,y:number):void {
  texturedBox(frontWalk,[1.37,.10,.61],[.305,y+.195,.69],'paving');texturedBox(frontWalk,[.61,.10,.76],[.69,y+.195,0],'paving');
  coverPanel(covers,'cover-corner',[0,y+.2225,0],[.72,.72]);
  annotate(g,'cover','Green fibre cover panels',[-1.2,y+.25,0],'movable-covers');annotate(g,'frame','Metal perimeter frame',[-1.9,y+.25,.365]);
- annotate(g,'paving','Interlocking walkway',[-.9,y+.25,-.72]);annotate(g,'channel','Concrete channel',[-1.7,y-.2,.34]);
+ annotate(g,'paving','Brown / grey hexagonal paving',[-.9,y+.25,-.72]);annotate(g,'channel','Concrete channel',[-1.7,y-.2,.34]);
 }
 function coverPanel(covers:THREE.Group,id:string,at:number[],size:number[]):void {
  const panel=component(covers,id,`Cover panel · indicative`);
