@@ -5,7 +5,7 @@ const controls: {kind:CameraAction['kind'];label:string;icon:typeof Home}[]=[
  {kind:'left',label:'Rotate left',icon:RotateCcw},{kind:'right',label:'Rotate right',icon:RotateCw},
  {kind:'in',label:'Zoom in',icon:Plus},{kind:'out',label:'Zoom out',icon:Minus}];
 export default function CameraControls({move}:{move:(kind:CameraAction['kind'])=>void}){
- return <div role="group" aria-label="Camera controls" className="camera-controls flex shrink-0 justify-center gap-1 border-t border-line bg-white px-2 py-1">
-  {controls.map(({kind,label,icon:Icon})=><button key={kind} className="control min-w-11 border-0 px-3" aria-label={label} title={label} onClick={()=>move(kind)}><Icon size={20}/></button>)}
+ return <div role="group" aria-label="Camera controls" className="camera-controls flex shrink-0 justify-center gap-1 border-t border-line bg-white px-2 py-1 max-md:order-2 max-md:justify-between">
+  {controls.map(({kind,label,icon:Icon})=><button key={kind} className="control min-w-11 border-0 px-3 max-md:min-h-12 max-md:flex-1" aria-label={label} title={label} onClick={()=>move(kind)}><Icon size={22}/></button>)}
  </div>;
 }

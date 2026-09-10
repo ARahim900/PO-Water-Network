@@ -4,7 +4,7 @@ import type { ModelSettings, Option, View, Weather } from './types';
 /** The view a reviewer lands on: the recommended option, so the page opens on the case it argues. */
 export const defaults: ModelSettings = {option:'buried',view:'section',opened:false,weather:'dry',step:0,showBase:true,showAssets:true,selectedPath:'all',animation:'off',flow:false,flowPaused:false};
 const options: Option[] = ['buried','channel'];
-const views: View[] = ['network','section','tapping','weather'];
+const views: View[] = ['network','section','run','tapping','weather'];
 const weathers: Weather[] = ['dry','rain','sand'];
 const pick = <T extends string>(allowed: readonly T[], value: string|null, fallback: T): T => allowed.includes(value as T) ? value as T : fallback;
 const flag = (value: string|null, fallback: boolean): boolean => value === '1' ? true : value === '0' ? false : fallback;

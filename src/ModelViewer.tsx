@@ -5,6 +5,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { buildNetwork } from './networkScene';
 import { buildDetail } from './detailScene';
+import { buildRun } from './runScene';
 import { disposeGroup } from './geometry';
 import data from './networkData.json';
 import AnnotationOverlay from './AnnotationOverlay';
@@ -25,13 +26,13 @@ function resetCamera(engine: Engine, settings: ModelSettings, top = false): void
  }
  engine.flight=engine.model.children.length&&!selected?boundsFlight(engine.camera,engine.controls,new THREE.Box3().setFromObject(engine.model),top):startFlight(engine.camera,engine.controls,target,distance,top);
  engine.camera.near = network ? 0.05 : 0.005; engine.camera.far = 3000; engine.camera.updateProjectionMatrix();
- engine.controls.minDistance = network ? 2 : 0.5; engine.controls.maxDistance = network ? 1000 : 14; engine.controls.update();
+ engine.controls.minDistance = network ? 2 : 0.5; engine.controls.maxDistance = network ? 1000 : settings.view === 'run' ? 40 : 14; engine.controls.update();
 }
 async function exportModel(engine: Engine, settings: ModelSettings): Promise<void> {
  const exporter = new GLTFExporter();
  engine.model.userData = { ...engine.model.userData, status: 'Concept only; not for construction or hydraulic analysis', planarCrs: 'EPSG:32640', sourceOrigin: data.origin, note: settings.view === 'network' ? 'Route widths and symbols enlarged for visibility. Vertical positions illustrative.' : 'Generic detail; fitting, structural and bedding dimensions not approved.' };
  const staticSettings={...settings,flow:false};
- const exportRoot=settings.view==='network'?buildNetwork(staticSettings):buildDetail(staticSettings);
+ const exportRoot=settings.view==='network'?buildNetwork(staticSettings):settings.view==='run'?buildRun(staticSettings):buildDetail(staticSettings);
  exportRoot.userData.note='Static geometry export. Flyover, shader cutaways and water animations are available in the interactive HTML.';
  const sprites: THREE.Sprite[] = [];
  exportRoot.traverse(object => { if(object instanceof THREE.Sprite) sprites.push(object); });
@@ -143,7 +144,7 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   const e=engine.current;if(!e)return;
   const oldCover=e.model.getObjectByName('movable-covers')?.position.y;
   e.scene.remove(e.model);disposeGroup(e.model);
-  try {e.model=settings.view==='network'?buildNetwork(settings):buildDetail(settings);e.scene.add(e.model);const sun=e.scene.getObjectByName('sunlight');if(sun instanceof THREE.DirectionalLight)sun.castShadow=settings.view!=='network';e.model.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=settings.view!=='network';o.receiveShadow=true;}});setItems(components(e.model));setError('');const focused=e.model.getObjectByName(selectedRef.current);if(focused)e.flight=componentFlight(e.camera,e.controls,focused);else if(selectedRef.current){selectedRef.current='';setSelected('');resetCamera(e,current.current);}const cover=e.model.getObjectByName('movable-covers');if(cover)cover.position.y=oldCover??0;}
+  try {e.model=settings.view==='network'?buildNetwork(settings):settings.view==='run'?buildRun(settings):buildDetail(settings);e.scene.add(e.model);const sun=e.scene.getObjectByName('sunlight');if(sun instanceof THREE.DirectionalLight)sun.castShadow=settings.view!=='network';e.model.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=settings.view!=='network';o.receiveShadow=true;}});setItems(components(e.model));setError('');const focused=e.model.getObjectByName(selectedRef.current);if(focused)e.flight=componentFlight(e.camera,e.controls,focused);else if(selectedRef.current){selectedRef.current='';setSelected('');resetCamera(e,current.current);}const cover=e.model.getObjectByName('movable-covers');if(cover)cover.position.y=oldCover??0;}
   catch(err){setError(err instanceof Error?err.message:'The model could not be generated.');}
  },[settings.option,settings.view,settings.opened,settings.weather,settings.step,settings.showBase,settings.showAssets,settings.selectedPath]);
  useEffect(()=>{if(engine.current)setFlow(engine.current.model,settings.flow);},[settings.flow]);

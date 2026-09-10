@@ -1,5 +1,5 @@
 export type Option = 'buried' | 'channel';
-export type View = 'network' | 'section' | 'tapping' | 'weather';
+export type View = 'network' | 'section' | 'run' | 'tapping' | 'weather';
 export type Weather = 'dry' | 'rain' | 'sand';
 export interface PointLabel { name: string; point: number[]; }
 export interface NetworkPath { id: string; name: string; kind: string; points: number[][]; length: number; od: number; }

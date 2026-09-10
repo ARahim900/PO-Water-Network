@@ -7,7 +7,7 @@ import { surfaceMaterial, fibreMaterial, pipeBlack, waterBlue } from './surfaceM
 import { planFlow, setFlow } from './waterAnimation';
 import type { ModelSettings } from './types';
 const v=(x:number,y:number,z:number)=>new THREE.Vector3(x,y,z);
-function texturedBox(g:THREE.Group,size:number[],at:number[],kind:Parameters<typeof surfaceMaterial>[0]):THREE.Mesh {
+export function texturedBox(g:THREE.Group,size:number[],at:number[],kind:Parameters<typeof surfaceMaterial>[0]):THREE.Mesh {
  const mesh=box(g,size,at,'#FFFFFF');(mesh.material as THREE.Material).dispose();
  const top=surfaceMaterial(kind,size[0],size[2]);
  if(kind==='paving'){
