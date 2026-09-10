@@ -60,11 +60,19 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
  current.current=settings;
  useEffect(()=> {
   const container=host.current; if(!container) return;
-  let renderer: THREE.WebGLRenderer;
-  try {renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true});}
-  catch(e) {setError(e instanceof Error?e.message:'WebGL could not start.');return;}
-  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.localClippingEnabled=true;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,window.matchMedia('(pointer: coarse)').matches?1.5:2)); renderer.setClearColor('#F7F8F9');
+  // iPad and iPhone refuse a context outright when the GPU memory budget is tight, so ask for the
+  // cheapest thing that will do the job and step down again rather than giving up on the first refusal.
+  // Multisampling multiplies the back buffer, so it is off on touch; preserveDrawingBuffer retained a
+  // second full-size buffer every frame and nothing needs it — the 3D export rebuilds its own scene
+  // and never reads the canvas back.
+  const coarse=window.matchMedia('(pointer: coarse)').matches;
+  let renderer: THREE.WebGLRenderer|null=null, downgraded=false;
+  for(const options of [{antialias:!coarse,alpha:false},{antialias:false,alpha:false}]){
+   try {renderer=new THREE.WebGLRenderer(options);break;} catch {downgraded=true;}
+  }
+  if(!renderer){setError('This device could not start 3D graphics. Close other browser tabs and reload; on an iPad or phone, closing other apps frees graphics memory.');return;}
+  renderer.shadowMap.enabled=!coarse;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.localClippingEnabled=true;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,downgraded?1:coarse?1.5:2)); renderer.setClearColor('#F7F8F9');
   renderer.domElement.setAttribute('aria-label','Interactive 3D model. Use the adjacent view and camera buttons, or drag to rotate and scroll to zoom.');
   renderer.domElement.setAttribute('role','img'); container.appendChild(renderer.domElement);
   const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(42,1,0.01,3000);
@@ -114,9 +122,22 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
    }
    controls.update();renderer.render(scene,camera);
   };render();
-  const contextLost=(event: Event)=>{event.preventDefault();setError('The graphics context was interrupted. Reload the viewer to restore it.');};
+  // preventDefault is what lets the browser hand the context back. iPad and iPhone drop it routinely
+  // when you switch apps or tabs, so recover on restore instead of stranding the reviewer on an error.
+  const contextLost=(event: Event)=>{event.preventDefault();setError('Graphics paused while the device reclaimed memory. Restoring…');};
+  // The renderer comes back with fresh GL state, so everything set at start-up has to be set again —
+  // without this the model returns on a black ground instead of the paper colour.
+  const contextRestored=()=>{
+   renderer.setClearColor('#F7F8F9');
+   renderer.setPixelRatio(Math.min(window.devicePixelRatio,downgraded?1:coarse?1.5:2));
+   renderer.setSize(container.clientWidth,container.clientHeight);
+   renderer.shadowMap.enabled=!coarse;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+   renderer.localClippingEnabled=true;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
+   setError('');
+  };
   renderer.domElement.addEventListener('webglcontextlost',contextLost);
-  return ()=>{cancelAnimationFrame(frame);resize.disconnect();intersection.disconnect();controls.removeEventListener('start',cancelFlight);controls.dispose();renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('pointerdown',pointerDown);renderer.domElement.removeEventListener('pointerup',pointerUp);if(engine.current)disposeGroup(engine.current.model);renderer.dispose();renderer.domElement.removeEventListener('webglcontextlost',contextLost);renderer.domElement.remove();engine.current=null;};
+  renderer.domElement.addEventListener('webglcontextrestored',contextRestored);
+  return ()=>{cancelAnimationFrame(frame);resize.disconnect();intersection.disconnect();controls.removeEventListener('start',cancelFlight);controls.dispose();renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('pointerdown',pointerDown);renderer.domElement.removeEventListener('pointerup',pointerUp);if(engine.current)disposeGroup(engine.current.model);renderer.dispose();renderer.forceContextLoss();renderer.domElement.removeEventListener('webglcontextlost',contextLost);renderer.domElement.removeEventListener('webglcontextrestored',contextRestored);renderer.domElement.remove();engine.current=null;};
  },[]);
  useEffect(()=> {
   const e=engine.current;if(!e)return;
