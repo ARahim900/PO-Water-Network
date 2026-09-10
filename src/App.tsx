@@ -1,56 +1,67 @@
-import { useState } from 'react';
-import { Box, Cable, CloudRain, Download, Home, Layers, Minus, Plus, RotateCcw, RotateCw, Scan, SlidersHorizontal, Play, Pause } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Box, Cable, CloudRain, Download, Layers, Maximize, Minimize, Pause, Play, Droplets, ChevronDown } from 'lucide-react';
 import ModelViewer from './ModelViewer';
 import EvidencePanel from './EvidencePanel';
-import { caption, steps } from './content';
-import data from './networkData.json';
-import type { CameraAction, ModelSettings, Option, View, Weather } from './types';
-const views: {id:View;label:string;icon:typeof Box}[]=[{id:'network',label:'Zone Five layout',icon:Layers},{id:'section',label:'Pipe installation',icon:Box},{id:'tapping',label:'Villa tapping',icon:Cable},{id:'weather',label:'Rain & sand',icon:CloudRain}];
+import ViewDetails from './ViewDetails';
+import ProjectReview from './ProjectReview';
+import CameraControls from './CameraControls';
+import type { CameraAction, ModelSettings, Option, View } from './types';
+const views: {id:View;label:string;short:string;icon:typeof Box}[]=[{id:'network',label:'Zone Five layout',short:'Layout',icon:Layers},{id:'section',label:'Pipe installation',short:'Installation',icon:Box},{id:'tapping',label:'Villa tapping',short:'Tapping',icon:Cable},{id:'weather',label:'Rain & sand',short:'Weather',icon:CloudRain}];
 const initial:ModelSettings={option:'channel',view:'section',opened:false,weather:'dry',step:0,showBase:true,showAssets:true,selectedPath:'all',animation:'off',flow:false,flowPaused:false};
 export default function App() {
  const [settings,setSettings]=useState<ModelSettings>(initial);
  const [camera,setCamera]=useState<CameraAction>({kind:'home',serial:0});
  const [exportSerial,setExportSerial]=useState(0);
- const info=caption(settings);
+ const [expanded,setExpanded]=useState(false);
+ const [detailsOpen,setDetailsOpen]=useState(false);
+ const expandButton=useRef<HTMLButtonElement>(null);
+ const frame=useRef<HTMLDivElement>(null);
+ useEffect(()=>{
+  if(!expanded)return;
+  const overflow=document.body.style.overflow;document.body.style.overflow='hidden';
+  const keydown=(event:KeyboardEvent)=>{
+   if(event.key==='Escape')setExpanded(false);
+   if(event.key!=='Tab'||!frame.current)return;
+   const nodes=Array.from(frame.current.querySelectorAll<HTMLElement>('button:not([disabled]),select')).filter(node=>node.getClientRects().length);
+   const first=nodes[0],last=nodes[nodes.length-1];
+   if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
+   else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+  };
+  window.addEventListener('keydown',keydown);expandButton.current?.focus();
+  return()=>{document.body.style.overflow=overflow;window.removeEventListener('keydown',keydown);expandButton.current?.focus();};
+ },[expanded]);
  const patch=(value:Partial<ModelSettings>)=>setSettings(s=>({...s,...value,...(('view' in value||'option' in value||'opened' in value)?{animation:'off' as const}:{})}));
  const move=(kind:CameraAction['kind'])=>setCamera(c=>({kind,serial:c.serial+1}));
+ const selectView=(view:View)=>patch({view,step:view==='tapping'?Math.max(3,settings.step):settings.step});
+ const coversOpen=settings.opened||settings.flow||settings.view==='tapping'&&settings.step>0;
+ const toggleCovers=()=>patch({opened:!coversOpen,step:coversOpen?0:Math.max(3,settings.step),flow:false});
+ const waterActive=settings.flow||settings.view==='weather'&&settings.weather==='rain';
+ const pause=()=>patch({flowPaused:!settings.flowPaused,animation:settings.animation==='playing'?'paused':settings.animation});
  return <main className="mx-auto max-w-[1536px]">
-  <header className="flex flex-wrap items-center justify-between gap-3 bg-purple px-5 py-4 text-white md:px-8"><div className="eyebrow">Muscat Bay <span className="ml-2 font-normal tracking-normal">/ Assets & Operations</span></div><span className="text-[14px]">Management review · Concept only</span></header>
-  <section className="flex flex-wrap items-end justify-between gap-4 px-5 py-6 md:px-8"><div><p className="eyebrow text-ink">Zone Five / water network</p><h1 className="mt-1 text-3xl md:text-4xl">Explore the network in motion.</h1><p className="mt-2">Select a component to fly closer. Inspect materials, access and water movement.</p></div><button onClick={()=>setExportSerial(v=>v+1)} className="control"><Download size={18}/>Download static 3D view</button></section>
-  <div className="mx-5 mb-5 flex flex-wrap items-center gap-x-6 gap-y-2 border-y border-line py-3 md:mx-8"><strong className="text-purple">Recommendation: Option One — buried</strong><span>Fewer components to maintain.</span><span>Channel benefit: access without trench excavation.</span></div>
-  <div className="px-5 md:px-8"><div role="group" aria-label="Installation option" className="inline-flex flex-wrap gap-2">{(['buried','channel'] as Option[]).map((o,i)=><button key={o} aria-pressed={settings.option===o} className={`control ${settings.option===o?'selected':''}`} onClick={()=>patch({option:o})}>Option {i+1} · {o==='buried'?'Buried pipeline':'Covered channel'}</button>)}</div>
-   <nav aria-label="Model views" className="mt-5 flex flex-wrap gap-x-5 gap-y-2 border-b border-line">{views.map(({id,label,icon:Icon})=><button key={id} aria-pressed={settings.view===id} onClick={()=>patch({view:id})} className={`flex min-h-12 items-center gap-2 border-b-3 px-1 py-2 font-medium ${settings.view===id?'border-purple text-purple':'border-transparent text-ink'}`}><Icon size={18}/>{label}</button>)}</nav>
-  </div>
-  <section className="grid gap-0 px-5 pb-6 md:px-8 lg:grid-cols-[minmax(0,1fr)_315px]">
-   <div className="relative mt-4 overflow-hidden rounded-[10.5px] border border-line bg-paper">
-    <div className="absolute left-3 top-3 z-10 max-w-[85%] rounded-[5px] border border-line bg-white px-3 py-2 text-[14px]">{settings.view==='network'?'Source CAD alignment · route widths enlarged':'Typical detail · concept materials and dimensions'}</div>
-    <div className="h-[640px] md:h-[620px]"><ModelViewer settings={settings} cameraAction={camera} exportSerial={exportSerial} onComponentSelect={(water,reveal)=>patch({animation:'paused',...water?{flow:true}:{},...reveal?{opened:true,step:Math.max(settings.step,3)}:{}})}/></div>
-    <div className="absolute bottom-3 left-3 right-3 z-10 flex flex-wrap items-center justify-between gap-2"><div role="group" aria-label="Camera controls" className="flex gap-1 rounded-[5px] border border-line bg-white p-1">
-     <button className="control border-0 px-2" aria-label="Reset or focus camera" title="Reset / focus selected route" onClick={()=>move('home')}><Home size={18}/></button>
-     <button className="control border-0 px-2" aria-label="Top view" title="Top view" onClick={()=>move('top')}><Scan size={18}/></button>
-     <button className="control border-0 px-2" aria-label="Rotate left" onClick={()=>move('left')}><RotateCcw size={18}/></button>
-     <button className="control border-0 px-2" aria-label="Rotate right" onClick={()=>move('right')}><RotateCw size={18}/></button>
-     <button className="control border-0 px-2" aria-label="Zoom in" onClick={()=>move('in')}><Plus size={18}/></button>
-     <button className="control border-0 px-2" aria-label="Zoom out" onClick={()=>move('out')}><Minus size={18}/></button>
-    </div><span className="rounded-[5px] bg-white px-2 py-1 text-[14px]">Drag to orbit · Scroll / pinch to zoom</span></div>
-   </div>
-   <aside className="flex flex-col gap-5 pt-5 lg:pl-6">
-    <div aria-live="polite"><h2 className="text-2xl leading-snug">{info.title}</h2><p className="mt-3">{info.body}</p></div>
-    {settings.option==='channel'&&settings.view!=='network'&&<div className="space-y-2"><button className="control w-full selected" onClick={()=>patch({animation:settings.animation==='playing'?'paused':'playing'})}>{settings.animation==='playing'?<Pause size={18}/>:<Play size={18}/>} {settings.animation==='playing'?'Pause animation':settings.animation==='paused'?'Resume animation':'Play cover animation'}</button><p>Animated lift and return. Presentation timing only; no operating time is predicted.</p></div>}
-    <div className="space-y-2 border-t border-line pt-4"><button className={`control w-full ${settings.flow?'selected':''}`} aria-pressed={settings.flow} onClick={()=>patch({flow:!settings.flow})}>{settings.flow?'Close water cutaway':'Show water flow'}</button>{(settings.flow||settings.view==='weather'&&settings.weather==='rain')&&<button className="control w-full" onClick={()=>patch({flowPaused:!settings.flowPaused})}>{settings.flowPaused?'Resume water motion':'Pause water motion'}</button>}<p>Illustrative flow direction and timing. Tracers show movement within a full pipe; no velocity, pressure or capacity is calculated.</p></div>
-    <div className="border-t border-line pt-4"><h3 className="flex items-center gap-2 font-sans font-semibold"><SlidersHorizontal size={18}/>Explore this view</h3>
-     {settings.view==='network'?<div className="mt-3 space-y-3"><label className="block" htmlFor="route">Select a route</label><select id="route" value={settings.selectedPath} onChange={e=>patch({selectedPath:e.target.value})} className="w-full rounded-[5px] border border-line bg-white p-2"><option value="all">All mains and connections</option>{data.paths.map(p=><option key={p.name} value={p.name}>{p.name} · {p.length.toFixed(2)} m</option>)}</select><button className="control w-full" onClick={()=>move('home')}>Focus selected route</button><label className="flex items-center gap-2"><input type="checkbox" checked={settings.showBase} onChange={e=>patch({showBase:e.target.checked})}/>As-built background</label><label className="flex items-center gap-2"><input type="checkbox" checked={settings.showAssets} onChange={e=>patch({showAssets:e.target.checked})}/>Meter and valve symbols</label><div className="space-y-1 border-t border-line pt-3"><p><span className="mr-2 inline-block h-2 w-5 bg-[#0A0A0A]"/>OD110 mains / branches</p><p><span className="mr-2 inline-block h-2 w-5 bg-[#0A0A0A]"/>OD25 villa services</p><p>Lengths are CAD plan measurements.</p></div></div>:null}
-     {settings.view==='section'?<div className="mt-3 space-y-3">{settings.option==='channel'&&<button className="control w-full" onClick={()=>patch({opened:!settings.opened,...settings.opened?{flow:false}:{}})}>{settings.option==='channel'?(settings.opened?'Lower covers':'Lift covers'):(settings.opened?'Show backfill':'Show excavated access')}</button>}<p>{settings.option==='channel'?'Closed cover tops are level with the walkway. The front wall and adjacent paving are cut away when open to expose the pipe.':'One half is cut away: bedding, fine granular surround, compacted backfill, sub-base and paving. Layer thicknesses and grading remain unverified.'}</p></div>:null}
-     {settings.view==='tapping'?<div className="mt-3 space-y-2">{settings.option==='channel'&&<p><strong>The S-curve allows movement; it is not a vent.</strong> REQ-002 p. 11 requires flexibility at the wall exit. Shape, bend radius and fit need manufacturer / designer verification.</p>}{steps.map((name,i)=><button key={name} onClick={()=>patch({step:i})} aria-pressed={settings.step===i} className={`control w-full justify-start ${settings.step===i?'selected':''}`}>{i+1}. {name}</button>)}</div>:null}
-     {settings.view==='weather'?<div className="mt-3 space-y-3"><div className="flex flex-wrap gap-2">{(['dry','rain','sand'] as Weather[]).map(w=><button key={w} className={`control ${settings.weather===w?'selected':''}`} aria-pressed={settings.weather===w} onClick={()=>patch({weather:w})}>{w==='dry'?'Dry':w==='rain'?'Rainwater':'Dust & sand'}</button>)}</div>{settings.option==='channel'&&<button className="control w-full" onClick={()=>patch({opened:!settings.opened,...settings.opened?{flow:false}:{}})}>{settings.opened?'Lower covers':'Lift covers'}</button>}<p>No pump system is proposed. No site-specific drainage fall or outlet has been assumed.</p></div>:null}
+  <header className="flex items-center justify-between gap-2 bg-purple px-4 py-3 text-white md:px-8"><span className="eyebrow">Muscat Bay</span><span className="text-[14px]">Zone Five · Concept review</span></header>
+  <section className="flex items-center justify-between gap-3 px-4 py-3 md:px-8 md:py-5"><div><h1 className="text-xl md:text-3xl">Water network explorer</h1><p className="mt-1 hidden md:block">Inspect both installation options. Select a component to fly closer.</p></div><button aria-label="Download static 3D view" onClick={()=>setExportSerial(v=>v+1)} className="control"><Download size={20}/><span className="hidden sm:inline">3D export</span></button></section>
+  <section className="grid gap-4 pb-5 md:px-8 xl:grid-cols-[minmax(0,1fr)_315px]">
+   <div ref={frame} role={expanded?'dialog':undefined} aria-modal={expanded||undefined} aria-label={expanded?'Expanded 3D explorer':undefined} className={expanded?'explorer-expanded fixed inset-0 z-50 flex h-dvh min-h-0 flex-col bg-paper':'flex min-w-0 flex-col border-y border-line bg-paper md:rounded-[10.5px] md:border'}>
+    <div className="viewer-options flex shrink-0 items-center gap-2 border-b border-line bg-white p-2">
+     <div role="group" aria-label="Installation option" className="grid min-w-0 flex-1 grid-cols-2 gap-2">{(['buried','channel'] as Option[]).map((o,i)=><button key={o} aria-pressed={settings.option===o} aria-label={`Option ${i+1} · ${o==='buried'?'Buried pipeline':'Covered channel'}`} className={`control px-2 ${settings.option===o?'selected':''}`} onClick={()=>patch({option:o})}>{i+1} · {o==='buried'?'Buried':'Channel'}</button>)}</div>
+     <button ref={expandButton} className="control min-w-11 px-2" onClick={()=>setExpanded(v=>!v)} aria-label={expanded?'Exit expanded view':'Expand model'} title={expanded?'Exit expanded view':'Expand model'}>{expanded?<Minimize size={20}/>:<Maximize size={20}/>}</button>
     </div>
-    <p className="mt-auto border-t border-line pt-4 font-medium text-purple">Not for construction. No hydraulic or drainage-capacity result is implied.</p>
+    <nav aria-label="Model views" className="viewer-tabs grid shrink-0 grid-cols-4 border-b border-line bg-white">{views.map(({id,label,short,icon:Icon})=><button key={id} aria-label={label} aria-pressed={settings.view===id} onClick={()=>selectView(id)} className={`flex min-h-12 items-center justify-center gap-1 border-b-3 px-1 text-[14px] font-medium ${settings.view===id?'border-purple text-purple':'border-transparent text-ink'}`}><Icon className="hidden min-[380px]:block" size={17}/>{short}</button>)}</nav>
+    <div className={expanded?'viewer-stage min-h-0 flex-1':'viewer-stage h-[max(420px,56svh)] min-h-0 md:h-[680px]'}><ModelViewer settings={settings} cameraAction={camera} exportSerial={exportSerial} onComponentSelect={(water,reveal)=>patch({animation:'paused',...water?{flow:true}:{},...reveal?{opened:true,step:Math.max(settings.step,3)}:{}})}/></div>
+    <CameraControls move={move}/>
+    <div className="viewer-actions flex shrink-0 flex-wrap gap-2 border-t border-line bg-white p-2">
+     <button aria-pressed={settings.flow} className={`control flex-1 ${settings.flow?'selected':''}`} onClick={()=>patch({flow:!settings.flow})}><Droplets size={18}/>{settings.flow?'Hide flow':'Water flow'}</button>
+     {settings.option==='channel'&&settings.view!=='network'&&<button className="control flex-1" onClick={toggleCovers}>{coversOpen?'Lower covers':'Lift covers'}</button>}
+     {waterActive?<button className="control min-w-11 px-3" aria-label={settings.flowPaused?'Resume water motion':'Pause water motion'} onClick={pause}>{settings.flowPaused?<Play size={18}/>:<Pause size={18}/>}</button>:settings.option==='channel'&&settings.view!=='network'&&<button className="control min-w-11 px-3" aria-label={settings.animation==='playing'?'Pause cover animation':'Play cover animation'} onClick={()=>patch({animation:settings.animation==='playing'?'paused':'playing'})}>{settings.animation==='playing'?<Pause size={18}/>:<Play size={18}/>}</button>}
+    </div>
+    {expanded&&<p className="viewer-hint shrink-0 px-3 py-1 text-[14px] text-ink">Drag to rotate · Pinch to zoom · Concept only</p>}
+   </div>
+   <aside className="px-4 md:px-0">
+    <button className="control w-full justify-between xl:hidden" aria-expanded={detailsOpen} aria-controls="view-details" onClick={()=>setDetailsOpen(v=>!v)}>View controls & notes<ChevronDown size={18} className={detailsOpen?'rotate-180':''}/></button>
+    <div id="view-details" className={`${detailsOpen?'block':'hidden'} pt-4 xl:block xl:pt-0`}><ViewDetails settings={settings} patch={patch} move={move}/></div>
    </aside>
   </section>
-  <section className="border-t border-line bg-white px-5 py-6 md:px-8"><h2 className="text-2xl">My engineering preference</h2><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[550px] text-left"><thead><tr className="border-b border-line"><th className="py-3 pr-4">Decision factor</th><th className="py-3 pr-4">Option One · buried</th><th className="py-3">Option Two · covered channel</th></tr></thead><tbody>{[
- ['Routine maintenance','Fewer enclosure components.','Covers, frames, supports and drainage need upkeep.'],['Repair access','Excavation and reinstatement required.','Cover access can reduce excavation if tools fit.'],['Design coordination','Trench, utilities, bedding and crossings.','Those interfaces plus structure, covers and drainage.'],['Water performance','Must meet the approved duty.','Same duty; channel alone does not prevent leaks.'],['Commercial decision','Final agreed price still required.','Comparable price not received, per Rahim.']
- ].map(row=><tr key={row[0]} className="border-b border-line">{row.map((cell,i)=><td key={cell} className={`py-3 pr-5 ${i===0?'font-semibold text-purple':''}`}>{cell}</td>)}</tr>)}</tbody></table></div><p className="mt-4"><strong>Prefer burial for operational simplicity.</strong> Reconsider the channel only if its access benefit is demonstrated and justifies the additional design and maintenance obligations. No cost saving, faster programme or zero-leak guarantee is claimed.</p></section>
-  <EvidencePanel/>
-  <footer className="flex flex-wrap justify-between gap-2 bg-purple px-5 py-4 text-white md:px-8"><span>Muscat Bay · Zone Five options review</span><span>Local interactive model · Not a surveyed as-built</span></footer>
+  <details className="border-t border-line bg-white"><summary className="px-4 py-4 font-semibold text-purple md:px-8">Option comparison & project evidence</summary><ProjectReview/><EvidencePanel/></details>
+  <footer className="flex flex-wrap justify-between gap-2 bg-purple px-4 py-3 text-[14px] text-white md:px-8"><span>Muscat Bay · Assets & Operations</span><span>Concept only · Not for construction</span></footer>
  </main>;
 }

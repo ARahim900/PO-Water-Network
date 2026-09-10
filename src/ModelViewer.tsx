@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Tags } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
@@ -8,8 +9,8 @@ import { disposeGroup } from './geometry';
 import data from './networkData.json';
 import AnnotationOverlay from './AnnotationOverlay';
 import {projectAnnotations,type LabelFrame} from './annotations';
-import { components, componentFlight, findComponent, startFlight, advanceFlight, type ComponentItem, type Flight } from './interaction';
-import { animateWater, animateRain } from './waterAnimation';
+import { components, componentFlight, boundsFlight, findComponent, startFlight, advanceFlight, type ComponentItem, type Flight } from './interaction';
+import { animateWater, animateRain, setFlow } from './waterAnimation';
 import type { CameraAction, ModelSettings } from './types';
 interface ViewerProps { settings: ModelSettings; cameraAction: CameraAction; exportSerial: number; onComponentSelect: (water: boolean, reveal: boolean) => void; }
 interface Engine { scene: THREE.Scene; camera: THREE.PerspectiveCamera; renderer: THREE.WebGLRenderer; controls: OrbitControls; model: THREE.Group; flight: Flight | null; }
@@ -17,12 +18,12 @@ function resetCamera(engine: Engine, settings: ModelSettings, top = false): void
  const network = settings.view === 'network';
  const target = new THREE.Vector3(0, network ? 0 : -0.3, 0);
  let distance = network ? 290 : 3.1;
- const selected = data.paths.find(p => p.name === settings.selectedPath);
+ const selected = network?data.paths.find(p => p.name === settings.selectedPath):undefined;
  if(network && selected) {
   const bounds = new THREE.Box3().setFromPoints(selected.points.map(p => new THREE.Vector3(p[0],0,-p[1])));
   bounds.getCenter(target); distance = Math.max(12,bounds.getSize(new THREE.Vector3()).length()*0.95);
  }
- engine.flight=startFlight(engine.camera,engine.controls,target,distance,top);
+ engine.flight=engine.model.children.length&&!selected?boundsFlight(engine.camera,engine.controls,new THREE.Box3().setFromObject(engine.model),top):startFlight(engine.camera,engine.controls,target,distance,top);
  engine.camera.near = network ? 0.05 : 0.005; engine.camera.far = 3000; engine.camera.updateProjectionMatrix();
  engine.controls.minDistance = network ? 2 : 0.5; engine.controls.maxDistance = network ? 1000 : 14; engine.controls.update();
 }
@@ -48,6 +49,8 @@ async function exportModel(engine: Engine, settings: ModelSettings): Promise<voi
 }
 export default function ModelViewer({ settings, cameraAction, exportSerial, onComponentSelect }: ViewerProps) {
  const host = useRef<HTMLDivElement>(null); const engine = useRef<Engine|null>(null); const current = useRef(settings);
+ const [showLabels,setShowLabels]=useState(()=>window.matchMedia('(min-width: 768px)').matches);
+ const labelVisibility=useRef(showLabels);labelVisibility.current=showLabels;
  const [labels,setLabels] = useState<LabelFrame>({width:0,height:0,points:[]});
  const [items,setItems]=useState<ComponentItem[]>([]);const [selected,setSelected]=useState('');
  const selectedRef=useRef('');const selectionCallback=useRef(onComponentSelect);selectionCallback.current=onComponentSelect;
@@ -61,7 +64,7 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   try {renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true});}
   catch(e) {setError(e instanceof Error?e.message:'WebGL could not start.');return;}
   renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.localClippingEnabled=true;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2)); renderer.setClearColor('#F7F8F9');
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,window.matchMedia('(pointer: coarse)').matches?1.5:2)); renderer.setClearColor('#F7F8F9');
   renderer.domElement.setAttribute('aria-label','Interactive 3D model. Use the adjacent view and camera buttons, or drag to rotate and scroll to zoom.');
   renderer.domElement.setAttribute('role','img'); container.appendChild(renderer.domElement);
   const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(42,1,0.01,3000);
@@ -69,12 +72,16 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   const light=new THREE.DirectionalLight('#FFFFFF',1.2);light.position.set(4,7,5);light.name='sunlight';light.shadow.mapSize.set(1024,1024);Object.assign(light.shadow.camera,{left:-5,right:5,top:5,bottom:-5,near:.1,far:25});light.shadow.normalBias=.005;scene.add(light);
   const controls=new OrbitControls(camera,renderer.domElement);controls.enableDamping=true;controls.maxPolarAngle=Math.PI*0.92;
   engine.current={scene,camera,renderer,controls,model:new THREE.Group(),flight:null}; resetCamera(engine.current,current.current);
-  const resize=new ResizeObserver(()=>{const w=container.clientWidth,h=container.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();if(engine.current)resetCamera(engine.current,current.current);});resize.observe(container);
+  let measured=false;
+  const resize=new ResizeObserver(()=>{const w=container.clientWidth,h=container.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();if(!measured&&engine.current){measured=true;resetCamera(engine.current,current.current);}});resize.observe(container);
+  let visible=true;const intersection=new IntersectionObserver(entries=>{visible=entries[0]?.isIntersecting??true;});intersection.observe(container);
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
   const cancelFlight=()=>{if(engine.current)engine.current.flight=null;};controls.addEventListener('start',cancelFlight);
-  let pointerStart=new THREE.Vector2();
-  const pointerDown=(event:PointerEvent)=>{pointerStart.set(event.clientX,event.clientY);};
+  const pointerStart=new THREE.Vector2();const pointers=new Set<number>();let multiTouch=false;
+  const pointerDown=(event:PointerEvent)=>{pointers.add(event.pointerId);if(pointers.size===1){pointerStart.set(event.clientX,event.clientY);multiTouch=false;}else multiTouch=true;};
+  const pointerCancel=(event:PointerEvent)=>{pointers.delete(event.pointerId);multiTouch=true;};
   const pointerUp=(event:PointerEvent)=>{
+   pointers.delete(event.pointerId);if(multiTouch)return;
    if(pointerStart.distanceTo(new THREE.Vector2(event.clientX,event.clientY))>6||!engine.current)return;
    const rect=renderer.domElement.getBoundingClientRect(),ray=new THREE.Raycaster();
    ray.setFromCamera(new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1),camera);
@@ -83,10 +90,10 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
     const id=findComponent(hit.object);if(visible&&id){selectRef.current(id);break;}
    }
   };
-  renderer.domElement.addEventListener('pointerdown',pointerDown);renderer.domElement.addEventListener('pointerup',pointerUp);
+  renderer.domElement.addEventListener('pointercancel',pointerCancel);renderer.domElement.addEventListener('pointerdown',pointerDown);renderer.domElement.addEventListener('pointerup',pointerUp);
   let frame=0,lastTime=performance.now(),counter=0,waterTime=0;
   const render=()=>{
-   frame=requestAnimationFrame(render);const now=performance.now(),dt=Math.min(.05,(now-lastTime)/1000);lastTime=now;
+   frame=requestAnimationFrame(render);const now=performance.now(),dt=Math.min(.05,(now-lastTime)/1000);lastTime=now;if(!visible||document.hidden)return;
    const model=engine.current?.model;
    if(model){
     const config=current.current;const covers=model.getObjectByName('movable-covers');
@@ -103,13 +110,13 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
     renderer.domElement.dataset.camera=camera.position.toArray().map(n=>n.toFixed(3)).join(',');
     renderer.domElement.dataset.flowTime=waterTime.toFixed(3);
     model.updateMatrixWorld(true);
-    if(counter++%4===0){const next=projectAnnotations(model,camera,container.clientWidth,container.clientHeight);const key=JSON.stringify(next);if(key!==lastLabels.current){lastLabels.current=key;setLabels(next);}}
+    if(labelVisibility.current&&counter++%6===0){const next=projectAnnotations(model,camera,container.clientWidth,container.clientHeight);const key=JSON.stringify(next);if(key!==lastLabels.current){lastLabels.current=key;setLabels(next);}}
    }
    controls.update();renderer.render(scene,camera);
   };render();
   const contextLost=(event: Event)=>{event.preventDefault();setError('The graphics context was interrupted. Reload the viewer to restore it.');};
   renderer.domElement.addEventListener('webglcontextlost',contextLost);
-  return ()=>{cancelAnimationFrame(frame);resize.disconnect();controls.removeEventListener('start',cancelFlight);controls.dispose();renderer.domElement.removeEventListener('pointerdown',pointerDown);renderer.domElement.removeEventListener('pointerup',pointerUp);if(engine.current)disposeGroup(engine.current.model);renderer.dispose();renderer.domElement.removeEventListener('webglcontextlost',contextLost);renderer.domElement.remove();engine.current=null;};
+  return ()=>{cancelAnimationFrame(frame);resize.disconnect();intersection.disconnect();controls.removeEventListener('start',cancelFlight);controls.dispose();renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('pointerdown',pointerDown);renderer.domElement.removeEventListener('pointerup',pointerUp);if(engine.current)disposeGroup(engine.current.model);renderer.dispose();renderer.domElement.removeEventListener('webglcontextlost',contextLost);renderer.domElement.remove();engine.current=null;};
  },[]);
  useEffect(()=> {
   const e=engine.current;if(!e)return;
@@ -117,7 +124,9 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   e.scene.remove(e.model);disposeGroup(e.model);
   try {e.model=settings.view==='network'?buildNetwork(settings):buildDetail(settings);e.scene.add(e.model);const sun=e.scene.getObjectByName('sunlight');if(sun instanceof THREE.DirectionalLight)sun.castShadow=settings.view!=='network';e.model.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=settings.view!=='network';o.receiveShadow=true;}});setItems(components(e.model));setError('');const focused=e.model.getObjectByName(selectedRef.current);if(focused)e.flight=componentFlight(e.camera,e.controls,focused);else if(selectedRef.current){selectedRef.current='';setSelected('');resetCamera(e,current.current);}const cover=e.model.getObjectByName('movable-covers');if(cover)cover.position.y=oldCover??0;}
   catch(err){setError(err instanceof Error?err.message:'The model could not be generated.');}
- },[settings.option,settings.view,settings.opened,settings.weather,settings.step,settings.showBase,settings.showAssets,settings.selectedPath,settings.flow]);
+ },[settings.option,settings.view,settings.opened,settings.weather,settings.step,settings.showBase,settings.showAssets,settings.selectedPath]);
+ useEffect(()=>{if(engine.current)setFlow(engine.current.model,settings.flow);},[settings.flow]);
+ useEffect(()=>{if(settings.view==='network')engine.current?.model.traverse(o=>{if(o instanceof THREE.Sprite)o.visible=showLabels;});},[showLabels,settings.view,settings.option,settings.selectedPath,settings.showBase,settings.showAssets,settings.flow]);
  useEffect(()=>{if(settings.animation==='off')clock.current=0;if(settings.animation==='playing'&&clock.current===0){const height=engine.current?.model.getObjectByName('movable-covers')?.position.y??0;clock.current=Math.acos(1-Math.min(1,height/.72)*2)*4/Math.PI;}},[settings.animation]);
  useEffect(()=>{selectedRef.current='';setSelected('');if(engine.current)resetCamera(engine.current,current.current);},[settings.view,settings.option,settings.selectedPath]);
  useEffect(()=> {
@@ -140,15 +149,18 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   selectionCallback.current((item?.water??false)&&!id.startsWith('rain'),reveal);
   e.flight=componentFlight(e.camera,e.controls,object);
  };selectRef.current=select;
- return <div className="relative h-full min-h-[410px] w-full">
-  <div ref={host} className="absolute inset-0 touch-none" style={{bottom:settings.view!=='network'&&labels.width>0&&labels.width<600?280:0}}/>
-  {settings.view!=='network'&&<AnnotationOverlay frame={labels} onSelect={select}/>}
-  <div className="absolute inset-x-3 top-20 z-10 sm:top-16 flex flex-wrap items-center gap-2 rounded-[5px] border border-line bg-white p-2">
-   <label htmlFor="component-focus" className="font-medium text-purple">Fly to</label>
-   <select id="component-focus" value={selected} onChange={event=>select(event.target.value)} className="min-w-0 flex-1 rounded-[5px] border border-line bg-white p-2"><option value="">Select a component…</option>{items.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select>
+ return <div className="flex h-full min-h-0 w-full flex-col">
+  <div className="flex shrink-0 items-center gap-2 border-b border-line bg-white p-2">
+   <label htmlFor="component-focus" className="sr-only">Fly to component</label>
+   <select id="component-focus" value={selected} onChange={event=>select(event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-[5px] border border-line bg-white px-2 text-base"><option value="">Fly to a component…</option>{items.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select>
+   <button className={`control min-w-11 px-2 ${showLabels?'selected':''}`} aria-label="Toggle model labels" aria-pressed={showLabels} title="Toggle model labels" onClick={()=>setShowLabels(v=>!v)}><Tags size={20}/></button>
+  </div>
+  <div className="relative min-h-0 flex-1">
+   <div ref={host} className="absolute inset-0 touch-none"/>
+   {showLabels&&settings.view!=='network'&&<AnnotationOverlay frame={labels} onSelect={select}/>}
+   {error&&<div role="alert" className="absolute inset-x-4 top-4 panel p-4 text-purple">{error}</div>}
+   {exporting&&<div role="status" className="absolute bottom-4 left-4 panel p-3">Preparing 3D download…</div>}
   </div>
   <div className="sr-only" role="status">{selected?`Viewing ${items.find(item=>item.id===selected)?.title??selected}`:'Select a component for a camera flyover.'}</div>
-  {error&&<div role="alert" className="absolute inset-x-4 top-4 panel p-4 text-purple">{error}</div>}
-  {exporting&&<div role="status" className="absolute bottom-4 left-4 panel p-3">Preparing 3D download…</div>}
  </div>;
 }

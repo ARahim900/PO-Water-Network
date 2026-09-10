@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import data from './networkData.json';
 import { box, label, pipe, purple, sage } from './geometry';
 import { component } from './interaction';
-import { addWater, clipPipeForWater } from './waterAnimation';
+import { planFlow, setFlow } from './waterAnimation';
 import type { ModelSettings } from './types';
 export function buildNetwork(settings: ModelSettings): THREE.Group {
  const group = new THREE.Group(); group.name = 'Zone Five plan-derived visual model';
@@ -18,7 +18,7 @@ export function buildNetwork(settings: ModelSettings): THREE.Group {
   const route = component(group,path.id,path.name,true), shell = new THREE.Group();route.add(shell);
   const points=path.points.map(p => new THREE.Vector3(p[0], depth, -p[1]));
   pipe(shell,points,path.kind === 'service' ? .30 : .48,colour);
-  if(settings.flow&&active){clipPipeForWater(shell,depth);addWater(route,points,path.kind==='service'?.23:.38,14);}
+  if(active)planFlow(shell,route,points,path.kind==='service'?.23:.38,depth,14);
  }
  if (settings.option === 'channel') for (const [index,path] of data.channels.entries()) {
   const enclosureGroup=component(group,`enclosure-${index}`,`Channel enclosure ${index+1}`);
@@ -36,7 +36,7 @@ export function buildNetwork(settings: ModelSettings): THREE.Group {
  }
  label(group, 'N', [-112, 1, -179], 6);
  pipe(group, [new THREE.Vector3(-112, 0, -155),new THREE.Vector3(-112,0,-173)], 0.3);
- return group;
+ setFlow(group,settings.flow);return group;
 }
 function addAssets(group: THREE.Group): void {
  for (const asset of data.assets) {

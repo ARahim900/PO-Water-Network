@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 @theme { --color-purple: #4E4456; --color-sage: #A4C5BB; --color-paper: #F7F8F9; --color-ink: #454545; --color-line: #E5E7EB; --font-sans: Inter, system-ui, sans-serif; --font-serif: Georgia, serif; }
 @layer base {
- body { @apply m-0 bg-paper font-sans text-[14px] leading-relaxed text-ink; }
+ body { @apply m-0 bg-paper font-sans text-base leading-relaxed md:text-[14px] text-ink; }
  h1,h2,h3 { @apply font-serif tracking-tight text-purple; }
  button,a,input,select,summary { @apply focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-sage; }
  button,select,summary { @apply cursor-pointer; }
@@ -9,8 +9,20 @@
  button:disabled { @apply cursor-not-allowed opacity-50; }
 }
 @layer components {
- .control { @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-[5px] border border-line bg-white px-3 py-2 font-medium text-purple transition-colors hover:bg-paper; }
+ .control { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-[5px] border border-line bg-white px-3 py-2 font-medium text-purple transition-colors hover:bg-paper; }
  .selected { @apply bg-sage text-purple; }
  .eyebrow { @apply text-[14px] font-semibold tracking-[0.14em] uppercase; }
  .panel { @apply rounded-[10.5px] border border-line bg-white; }
+}
+
+@media (min-width: 600px) and (max-height: 500px) {
+ .explorer-expanded { @apply grid; grid-template-columns: minmax(0,1fr) 300px; grid-template-rows: 58px 50px minmax(0,1fr) 100px 60px; }
+ .explorer-expanded .viewer-stage { @apply col-start-1 row-start-1 row-span-5; }
+ .explorer-expanded .viewer-options { @apply col-start-2 row-start-1; }
+ .explorer-expanded .viewer-tabs { @apply col-start-2 row-start-2; }
+ .explorer-expanded .viewer-tabs svg { @apply hidden; }
+ .explorer-expanded .viewer-tabs button { @apply text-[14px]; }
+ .explorer-expanded .viewer-hint { @apply col-start-2 row-start-3 self-end; }
+ .explorer-expanded .camera-controls { @apply col-start-2 row-start-4 grid grid-cols-3; }
+ .explorer-expanded .viewer-actions { @apply col-start-2 row-start-5 flex-nowrap; }
 }

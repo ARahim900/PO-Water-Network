@@ -3,6 +3,25 @@ import { pipe } from './geometry';
 import { waterBlue } from './surfaceMaterials';
 interface Stream { points: THREE.Vector3[]; lengths: number[]; total: number; radius: number; particles: THREE.InstancedMesh; }
 const streams = new WeakMap<THREE.Object3D,Stream>();
+interface FlowPlan { parent: THREE.Group; points: THREE.Vector3[]; radius: number; level: number; count: number; }
+const flowPlans=new WeakMap<THREE.Object3D,FlowPlan>();
+export function planFlow(shell:THREE.Group,parent:THREE.Group,points:THREE.Vector3[],radius:number,level:number,count=22):void {
+ flowPlans.set(shell,{parent,points,radius,level,count});
+}
+export function setFlow(model:THREE.Group,on:boolean):void {
+ const shells:THREE.Object3D[]=[];model.traverse(object=>{if(flowPlans.has(object))shells.push(object);});
+ for(const shell of shells){
+  const plan=flowPlans.get(shell);if(!plan)continue;
+  let water=plan.parent.children.find(child=>child.name==='flow-water');
+  if(on&&!water){addWater(plan.parent,plan.points,plan.radius,plan.count);water=plan.parent.children.find(child=>child.name==='flow-water');}
+  if(water)water.visible=on;
+  shell.traverse(object=>{if(object instanceof THREE.Mesh){
+   const material=object.material as THREE.MeshStandardMaterial;
+   const clipped=!!material.clippingPlanes?.length;if(clipped===on)return;
+   material.clippingPlanes=on?[new THREE.Plane(new THREE.Vector3(0,-1,0),plan.level)]:null;material.clipShadows=true;material.needsUpdate=true;
+  }});
+ }
+}
 export function addWater(parent: THREE.Group, points: THREE.Vector3[], radius: number, count = 22): void {
  const water = new THREE.Group();water.name='flow-water';parent.add(water);
  pipe(water,points,radius,waterBlue);
@@ -15,7 +34,7 @@ export function addWater(parent: THREE.Group, points: THREE.Vector3[], radius: n
 export function animateWater(model: THREE.Group, time: number): void {
  const matrix=new THREE.Matrix4(),position=new THREE.Vector3();
  model.traverse(object=>{
-  const stream=streams.get(object);if(!stream)return;
+  const stream=streams.get(object);if(!stream||!object.visible)return;
   for(let i=0;i<stream.particles.count;i++){
    const distance=((i/stream.particles.count+time*.09)%1)*stream.total;
    let segment=1;while(segment<stream.lengths.length-1&&stream.lengths[segment]<distance)segment++;
@@ -25,9 +44,6 @@ export function animateWater(model: THREE.Group, time: number): void {
   }
   stream.particles.instanceMatrix.needsUpdate=true;
  });
-}
-export function clipPipeForWater(group: THREE.Group, level: number): void {
- group.traverse(object=>{if(object instanceof THREE.Mesh){const material=object.material as THREE.MeshStandardMaterial;material.clippingPlanes=[new THREE.Plane(new THREE.Vector3(0,-1,0),level)];material.clipShadows=true;}});
 }
 export function animateRain(model: THREE.Group, time: number): void {
  const rain=model.getObjectByName('rain-drops');if(!rain)return;
