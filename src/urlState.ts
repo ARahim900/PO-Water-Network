@@ -12,15 +12,17 @@ const flag = (value: string|null, fallback: boolean): boolean => value === '1' ?
 export function readSettings(hash: string = window.location.hash): ModelSettings {
  const q = new URLSearchParams(hash.replace(/^#/,''));
  const route = q.get('route');
- const step = Number(q.get('step'));
+ const view = pick(views,q.get('view'),defaults.view);
+ const demonstration = view === 'run' || view === 'tapping';
+ const step = q.has('step') ? Number(q.get('step')) : view === 'tapping' ? 3 : defaults.step;
  return {
   ...defaults,
   option: pick(options,q.get('option'),defaults.option),
-  view: pick(views,q.get('view'),defaults.view),
+  view,
   weather: pick(weathers,q.get('weather'),defaults.weather),
   step: Number.isInteger(step) && step >= 0 && step < steps.length ? step : defaults.step,
   opened: flag(q.get('open'),defaults.opened),
-  flow: flag(q.get('flow'),defaults.flow),
+  flow: flag(q.get('flow'),demonstration),
   showBase: flag(q.get('base'),defaults.showBase),
   showAssets: flag(q.get('assets'),defaults.showAssets),
   selectedPath: route && (route === 'all' || data.paths.some(p => p.name === route)) ? route : defaults.selectedPath,
@@ -36,6 +38,6 @@ export function writeSettings(s: ModelSettings): void {
  if(s.view === 'weather') q.set('weather',s.weather);
  if(s.view === 'network'){ q.set('route',s.selectedPath); q.set('base',s.showBase?'1':'0'); q.set('assets',s.showAssets?'1':'0'); }
  else if(s.opened) q.set('open','1');
- if(s.flow) q.set('flow','1');
+ if(s.flow || s.view === 'run' || s.view === 'tapping') q.set('flow',s.flow?'1':'0');
  try { window.history.replaceState(null,'',`#${q}`); } catch { /* history is unavailable in this host */ }
 }

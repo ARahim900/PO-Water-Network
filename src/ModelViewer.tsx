@@ -7,11 +7,12 @@ import { createGraphicsRenderer, type GraphicsRenderer } from './graphicsRendere
 import { buildNetwork } from './networkScene';
 import { buildDetail } from './detailScene';
 import { buildRun } from './runScene';
+import { modelObjects } from './streetScene';
 import { disposeGroup } from './geometry';
 import data from './networkData.json';
 import AnnotationOverlay from './AnnotationOverlay';
 import {projectAnnotations,type LabelFrame} from './annotations';
-import { components, componentFlight, boundsFlight, findComponent, startFlight, advanceFlight, type ComponentItem, type Flight } from './interaction';
+import { components, componentFlight, boundsFlight, modelFlight, findComponent, startFlight, advanceFlight, type ComponentItem, type Flight } from './interaction';
 import { animateWater, animateRain, setFlow } from './waterAnimation';
 import { networkTourStops, type NetworkTour } from './networkTour';
 import type { CameraAction, ModelSettings } from './types';
@@ -26,9 +27,9 @@ function resetCamera(engine: Engine, settings: ModelSettings, top = false): void
   const bounds = new THREE.Box3().setFromPoints(selected.points.map(p => new THREE.Vector3(p[0],0,-p[1])));
   bounds.getCenter(target); distance = Math.max(12,bounds.getSize(new THREE.Vector3()).length()*0.95);
  }
- engine.flight=engine.model.children.length&&!selected?boundsFlight(engine.camera,engine.controls,new THREE.Box3().setFromObject(engine.model),top):startFlight(engine.camera,engine.controls,target,distance,top);
+ engine.flight=engine.model.children.length&&!selected?(network?boundsFlight(engine.camera,engine.controls,new THREE.Box3().setFromObject(engine.model),top):modelFlight(engine.camera,engine.controls,engine.model,top)):startFlight(engine.camera,engine.controls,target,distance,top);
  engine.camera.near = network ? 0.05 : 0.005; engine.camera.far = 3000; engine.camera.updateProjectionMatrix();
- engine.controls.minDistance = network ? 2 : 0.5; engine.controls.maxDistance = network ? 1000 : settings.view === 'run' ? 40 : 14; engine.controls.update();
+ engine.controls.minDistance = network ? 2 : 0.5; engine.controls.maxDistance = network ? 1000 : settings.view === 'weather' ? 14 : 60; engine.controls.update();
 }
 async function exportModel(engine: Engine, settings: ModelSettings): Promise<void> {
  const exporter = new GLTFExporter();
@@ -52,7 +53,7 @@ async function exportModel(engine: Engine, settings: ModelSettings): Promise<voi
 }
 export default function ModelViewer({ settings, cameraAction, exportSerial, onComponentSelect }: ViewerProps) {
  const host = useRef<HTMLDivElement>(null); const engine = useRef<Engine|null>(null); const current = useRef(settings);
- const [showLabels,setShowLabels]=useState(()=>navigator.maxTouchPoints===0&&!window.matchMedia('(any-pointer: coarse)').matches&&window.matchMedia('(min-width: 1024px)').matches);
+ const [showLabels,setShowLabels]=useState(false);
  const labelVisibility=useRef(showLabels);labelVisibility.current=showLabels;
  const [labels,setLabels] = useState<LabelFrame>({width:0,height:0,points:[]});
  const [items,setItems]=useState<ComponentItem[]>([]);const [selected,setSelected]=useState('');
@@ -137,7 +138,7 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
    const dt=Math.min(.1,(now-lastTime)/1000);lastTime=now;
    const model=engine.current?.model;
    const config=current.current;
-   const cover=model?.getObjectByName('movable-covers');
+   const cover=modelObjects(model,'movable-covers')[0];
    const coverTarget=((config.view==='tapping'?config.step>0:config.opened)||config.flow)?.72:0;
    const movingCover=!!cover&&(config.animation==='off'||reduced.matches)&&Math.abs(cover.position.y-coverTarget)>.001;
    const animating=!reduced.matches&&(!!engine.current?.flight||!!tour.current||config.animation==='playing'||!config.flowPaused&&(config.flow||config.view==='weather'&&config.weather==='rain'));
@@ -151,14 +152,19 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
     return;
    }
    if(model){
-    const config=current.current;const covers=model.getObjectByName('movable-covers');
-    if(covers){
-     if(config.animation==='playing'&&!reduced.matches){clock.current+=dt;covers.position.y=.72*(1-Math.cos(clock.current*Math.PI/4))/2;}
+    const config=current.current;
+    if(config.animation==='playing'&&!reduced.matches)clock.current+=dt;
+    for(const covers of modelObjects(model,'movable-covers')){
+     covers.visible=!config.flow;
+     if(config.animation==='playing'&&!reduced.matches){covers.position.y=.72*(1-Math.cos(clock.current*Math.PI/4))/2;}
      else if(config.animation==='off'||reduced.matches){const target=((config.view==='tapping'?config.step>0:config.opened)||config.flow)?.72:0;covers.position.y=reduced.matches?target:covers.position.y+(target-covers.position.y)*(1-Math.exp(-4*dt));}
     }
-    if(covers)model.getObjectByName('main')?.traverse(o=>{if(o instanceof THREE.Sprite)o.visible=covers.position.y>.18;});
-    const frontFrame=model.getObjectByName('front-frame-cut');if(frontFrame&&covers)frontFrame.visible=covers.position.y<.05;
-    const front=model.getObjectByName('front-walkway-cut');if(front&&covers)front.visible=covers.position.y<.05;
+    for(const lid of modelObjects(model,'chamber-cover'))lid.visible=!config.flow;
+    for(const covers of modelObjects(model,'movable-covers')){
+     const row=covers.parent??model;
+     for(const main of modelObjects(row,'main'))main.traverse(o=>{if(o instanceof THREE.Sprite)o.visible=covers.position.y>.18;});
+     for(const name of ['front-frame-cut','front-walkway-cut'])for(const cut of modelObjects(row,name))cut.visible=covers.position.y<.05;
+    }
     if(!config.flowPaused&&!reduced.matches)waterTime+=dt;
     animateWater(model,waterTime);animateRain(model,waterTime);
     const e=engine.current;
@@ -221,14 +227,14 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   const e=engine.current;if(!e)return;
   dirty.current=true;
   tour.current=null;setTourStatus('');
-  const oldCover=e.model.getObjectByName('movable-covers')?.position.y;
+  const oldCover=modelObjects(e.model,'movable-covers')[0]?.position.y;
   e.scene.remove(e.model);disposeGroup(e.model);
-  try {e.model=settings.view==='network'?buildNetwork(settings):settings.view==='run'?buildRun(settings):buildDetail(settings);e.scene.add(e.model);const sun=e.scene.getObjectByName('sunlight');if(sun instanceof THREE.DirectionalLight)sun.castShadow=settings.view!=='network';e.model.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=settings.view!=='network';o.receiveShadow=true;}});setItems(components(e.model));setError('');const focused=e.model.getObjectByName(selectedRef.current);if(focused)e.flight=componentFlight(e.camera,e.controls,focused);else if(selectedRef.current){selectedRef.current='';setSelected('');resetCamera(e,current.current);}const cover=e.model.getObjectByName('movable-covers');if(cover)cover.position.y=oldCover??0;}
+  try {e.model=settings.view==='network'?buildNetwork(settings):settings.view==='run'?buildRun(settings):buildDetail(settings);e.scene.add(e.model);const sun=e.scene.getObjectByName('sunlight');if(sun instanceof THREE.DirectionalLight)sun.castShadow=settings.view!=='network';e.model.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=settings.view!=='network';o.receiveShadow=true;}});setItems(components(e.model));setError('');const focused=e.model.getObjectByName(selectedRef.current);if(focused)e.flight=componentFlight(e.camera,e.controls,focused);else if(selectedRef.current){selectedRef.current='';setSelected('');resetCamera(e,current.current);}for(const cover of modelObjects(e.model,'movable-covers'))cover.position.y=oldCover??0;}
   catch(err){console.error('Model generation failed',err);setGraphicsFailure(false);setError(err instanceof Error?err.message:'The model could not be generated.');}
  },[graphics,settings.option,settings.view,settings.opened,settings.weather,settings.step,settings.showBase,settings.showAssets,settings.selectedPath]);
  useEffect(()=>{dirty.current=true;if(engine.current)setFlow(engine.current.model,settings.flow);},[settings.flow,graphics]);
  useEffect(()=>{dirty.current=true;if(settings.view==='network')engine.current?.model.traverse(o=>{if(o instanceof THREE.Sprite)o.visible=showLabels;});},[showLabels,settings.view,settings.option,settings.selectedPath,settings.showBase,settings.showAssets,settings.flow,graphics]);
- useEffect(()=>{if(settings.animation==='off')clock.current=0;if(settings.animation==='playing'&&clock.current===0){const height=engine.current?.model.getObjectByName('movable-covers')?.position.y??0;clock.current=Math.acos(1-Math.min(1,height/.72)*2)*4/Math.PI;}},[settings.animation]);
+ useEffect(()=>{if(settings.animation==='off')clock.current=0;if(settings.animation==='playing'&&clock.current===0){const height=modelObjects(engine.current?.model,'movable-covers')[0]?.position.y??0;clock.current=Math.acos(1-Math.min(1,height/.72)*2)*4/Math.PI;}},[settings.animation]);
  useEffect(()=>{selectedRef.current='';setSelected('');if(engine.current)resetCamera(engine.current,current.current);},[settings.view,settings.option,settings.selectedPath]);
  useEffect(()=> {
   const e=engine.current;if(!e)return;const kind=cameraAction.kind;
@@ -245,10 +251,11 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   setExporting(true);void exportModel(engine.current,current.current).catch(err=>{console.error('Model export failed',err);setGraphicsFailure(false);setError('Model export failed. Please reload and try again.');}).finally(()=>setExporting(false));
  },[exportSerial]);
  const select=(rawId:string)=>{
-  const id=rawId==='cover'?'movable-covers':rawId==='flex'?'service':rawId;const e=engine.current;if(!e)return;
+  const id=rawId.replace(/(^|-)cover$/,'$1movable-covers').replace(/(^|-)flex$/,'$1service');const e=engine.current;if(!e)return;
   const object=e.model.getObjectByName(id);if(!object)return;
   tour.current=null;setTourStatus('');selectedRef.current=id;setSelected(id);const item=items.find(item=>item.id===id);
-  const reveal=current.current.view!=='network'&&!id.startsWith('cover-panel-')&&!['paving','movable-covers','frame','rain-drops'].includes(id);
+  const role=String(object.userData.modelRole??object.name);
+  const reveal=current.current.view!=='network'&&!role.startsWith('cover-panel-')&&!['paving','movable-covers','frame','rain-drops'].includes(role);
   selectionCallback.current((item?.water??false)&&!id.startsWith('rain'),reveal);
   e.flight=componentFlight(e.camera,e.controls,object);
  };selectRef.current=select;
@@ -276,7 +283,7 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
    {error&&!graphicsFailure&&<div role="alert" className="absolute inset-x-4 top-4 panel p-4 text-purple">{error}</div>}
    {exporting&&<div role="status" className="absolute bottom-4 left-4 panel p-3">Preparing 3D download…</div>}
   </div>
-  {settings.view==='tapping'&&settings.option==='channel'&&<p className="shrink-0 border-t border-line bg-white px-3 py-1 text-[14px] text-purple">Straight service concept · Movement design outstanding</p>}
+  {settings.view==='tapping'&&settings.option==='channel'&&<p className="shrink-0 border-t border-line bg-white px-3 py-1 text-[14px] text-purple">45° upper-quadrant saddle · Formed sweep · Fitting and load checks pending</p>}
   <div className="sr-only" role="status">{selected?`Viewing ${items.find(item=>item.id===selected)?.title??selected}`:'Select a component for a camera flyover.'}</div>
  </div>;
 }

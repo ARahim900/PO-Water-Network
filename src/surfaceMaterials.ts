@@ -1,11 +1,13 @@
 import * as THREE from 'three';
-export const waterBlue = '#6B9AC4';
+export const waterBlue = '#168BDE';
 export const pipeBlack = '#0A0A0A';
-export function surfaceMaterial(kind: 'sand' | 'paving' | 'concrete' | 'backfill', width: number, depth: number): THREE.MeshStandardMaterial {
- const canvas = document.createElement('canvas'); canvas.width = kind==='paving'?384:256; canvas.height = kind==='paving'?444:256;
+// Visual texture scale only; actual unit dimensions and laying pattern remain unverified.
+export const pavingRepeat = .64;
+export function surfaceMaterial(kind: 'sand' | 'paving' | 'concrete' | 'backfill' | 'asphalt', width: number, depth: number): THREE.MeshStandardMaterial {
+ const canvas = document.createElement('canvas'); canvas.width = kind==='paving'?384:256; canvas.height = kind==='paving'?384:256;
  const ctx = canvas.getContext('2d');
  if (!ctx) throw new Error('Surface textures could not be created.');
- const base = kind === 'sand' ? '#c9ad7d' : kind === 'backfill' ? '#928573' : '#bdbbb5';
+ const base = kind === 'asphalt' ? '#454545' : kind === 'sand' ? '#c9ad7d' : kind === 'backfill' ? '#928573' : '#bdbbb5';
  ctx.fillStyle = base; ctx.fillRect(0, 0, 256, 256);
  let seed = 59; const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
  for (let i = 0; i < 18000; i++) {
@@ -14,30 +16,29 @@ export function surfaceMaterial(kind: 'sand' | 'paving' | 'concrete' | 'backfill
  }
  if (kind === 'paving') paintPaving(ctx);
  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
- texture.wrapS = texture.wrapT = THREE.RepeatWrapping;texture.repeat.set(width/.8,depth/(kind==='paving'?.8*2/Math.sqrt(3):.8));texture.anisotropy = 4;
+ texture.wrapS = texture.wrapT = THREE.RepeatWrapping;texture.repeat.set(width/(kind==='paving'?pavingRepeat:.8),depth/(kind==='paving'?pavingRepeat:.8));texture.anisotropy = 4;
  const bumpMap=kind==='paving'?pavingRelief(texture):texture;
  return new THREE.MeshStandardMaterial({map:texture,bumpMap,bumpScale:kind === 'sand'?.012:.006,roughness:.93});
 }
 
-function hexagon(ctx:CanvasRenderingContext2D,x:number,y:number,inset=0):void {
- ctx.beginPath();
- for(let i=0;i<6;i++){const angle=i*Math.PI/3,px=x+(64-inset)*Math.cos(angle),py=y+(64-inset)*Math.sin(angle)*444/(256*Math.sqrt(3));if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);}
- ctx.closePath();
-}
-function paintPaving(ctx: CanvasRenderingContext2D,relief=false): void {
- // The repeat spans four columns and four rows, keeping both joints and colour order seamless.
- for(let col=-1;col<5;col++)for(let row=-1;row<5;row++){
-  const x=col*96,y=row*111+((col%2+2)%2)*55.5;
-  hexagon(ctx,x,y);ctx.fillStyle=relief?'#bdbbb5':(row+col)%2===0?'#bdbbb5':'#705044';ctx.fill();
-  if(!relief){ctx.save();ctx.clip();for(let grain=0;grain<650;grain++){
-   ctx.fillStyle=grain%2?'rgba(255,255,255,.12)':'rgba(40,32,20,.13)';ctx.fillRect(x-64+(grain*37)%128,y-56+(grain*19)%112,1,1);
-  }ctx.restore();}
-  ctx.strokeStyle=relief?'#454545':'#77746e';ctx.lineWidth=3;ctx.stroke();
-  if(!relief){hexagon(ctx,x,y,3);ctx.strokeStyle='rgba(255,255,255,.23)';ctx.lineWidth=1;ctx.stroke();}
+function paintPaving(ctx:CanvasRenderingContext2D,relief=false):void {
+ // A periodic herringbone field of rectangular units; dimensions are illustrative.
+ const cell=48;
+ ctx.fillStyle=relief?'#454545':'#969087';ctx.fillRect(0,0,384,384);
+ for(let x=-2;x<10;x++)for(let y=-2;y<10;y++){
+  const band=((x-y)%4+4)%4;if(band!==0&&band!==3)continue;
+  const horizontal=band===0,w=(horizontal?2:1)*cell,h=(horizontal?1:2)*cell;
+  const shade=((x+y)%4+4)%4;
+  ctx.fillStyle=relief?'#BDBBB5':['#BDB6AA','#B4AFA5','#C5BFB3','#C0BAAF'][shade];
+  ctx.fillRect(x*cell+1,y*cell+1,w-2,h-2);
+  if(!relief){
+   ctx.strokeStyle='rgba(255,255,255,.13)';ctx.lineWidth=1;
+   ctx.strokeRect(x*cell+2,y*cell+2,w-4,h-4);
+  }
  }
 }
 function pavingRelief(colour: THREE.CanvasTexture): THREE.CanvasTexture {
- const canvas=document.createElement('canvas');canvas.width=384;canvas.height=444;
+ const canvas=document.createElement('canvas');canvas.width=384;canvas.height=384;
  const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Paving relief could not be created.');
  paintPaving(ctx,true);
  const texture=new THREE.CanvasTexture(canvas);texture.wrapS=texture.wrapT=THREE.RepeatWrapping;

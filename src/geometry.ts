@@ -25,7 +25,7 @@ export function label(group: THREE.Group, text: string, at: number[], height = 0
  canvas.width = Math.max(256, text.length * 24); canvas.height = 64;
  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, canvas.width, canvas.height);
  ctx.strokeStyle = '#E5E7EB'; ctx.strokeRect(1, 1, canvas.width - 2, 62);
- ctx.fillStyle = '#6B9AC4'; ctx.font = '500 36px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, canvas.width / 2, 33);
+ ctx.fillStyle = purple; ctx.font = '500 36px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, canvas.width / 2, 33);
  const texture = new THREE.CanvasTexture(canvas);
  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false, toneMapped: false }));
  sprite.position.set(at[0], at[1], at[2]); sprite.scale.set(height * canvas.width / 64, height, 1); sprite.renderOrder = 10; group.add(sprite);

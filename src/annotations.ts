@@ -8,12 +8,18 @@ export function annotate(group: THREE.Group, id: string, title: string, position
 }
 export function projectAnnotations(group: THREE.Group,camera: THREE.Camera,width:number,height:number): LabelFrame {
  const notes = (group.userData.annotations ?? []) as Annotation[];
- const cover=group.getObjectByName('movable-covers');
- const visible=notes.filter(n=>!cover||cover.position.y>.18||['cover','frame','paving'].includes(n.id));
- const points=visible.map(note=>{
+ const points=notes.flatMap(note=>{
   const object=note.object?group.getObjectByName(note.object):group;
+  let ancestor=object,cover:THREE.Object3D|undefined;
+  while(ancestor){
+   if(!ancestor.visible)return [];
+   cover??=ancestor.children.find(child=>(child.userData.modelRole??child.name)==='movable-covers');
+   ancestor=ancestor.parent??undefined;
+  }
+  const role=note.id.replace(/^side-\d+-/,'');
+  if(cover?.visible&&cover.position.y<=.18&&!['cover','frame','paving','asphalt'].includes(role))return [];
   const point=new THREE.Vector3(...note.position);object?.localToWorld(point);point.project(camera);
-  return {id:note.id,title:note.id==='cover'?(cover&&cover.position.y<.02?'Green fibre covers · flush':'Green fibre cover panels'):note.title,x:Math.round((point.x+1)*width/2),y:Math.round((1-point.y)*height/2),z:point.z};
+  return [{id:note.id,title:role==='cover'&&cover&&cover.position.y<.02?`${note.title} · flush`:note.title,x:Math.round((point.x+1)*width/2),y:Math.round((1-point.y)*height/2),z:point.z}];
  }).filter(p=>p.z>=-1&&p.z<=1&&p.x>=0&&p.x<=width&&p.y>=0&&p.y<=height);
  return {width,height,points};
 }

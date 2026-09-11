@@ -9,14 +9,16 @@ export function planFlow(shell:THREE.Group,parent:THREE.Group,points:THREE.Vecto
  flowPlans.set(shell,{parent,points,radius,level,count});
 }
 export function setFlow(model:THREE.Group,on:boolean):void {
- const shells:THREE.Object3D[]=[];model.traverse(object=>{if(flowPlans.has(object))shells.push(object);});
+ const shells:THREE.Object3D[]=[];model.traverse(object=>{if(object.userData.flowOccluder)object.visible=!on;if(flowPlans.has(object))shells.push(object);});
  for(const shell of shells){
   const plan=flowPlans.get(shell);if(!plan)continue;
   let water=plan.parent.children.find(child=>child.name==='flow-water');
-  if(on&&!water){addWater(plan.parent,plan.points,plan.radius,plan.count);water=plan.parent.children.find(child=>child.name==='flow-water');}
+  if(on&&!water&&plan.count>0){addWater(plan.parent,plan.points,plan.radius,plan.count);water=plan.parent.children.find(child=>child.name==='flow-water');}
   if(water)water.visible=on;
   shell.traverse(object=>{if(object instanceof THREE.Mesh){
    const material=object.material as THREE.MeshStandardMaterial;
+   const rising=plan.points.some(point=>Math.abs(point.y-plan.points[0].y)>.0001);
+   if(rising){material.transparent=on;material.opacity=on?.18:1;material.depthWrite=!on;material.needsUpdate=true;return;}
    const clipped=!!material.clippingPlanes?.length;if(clipped===on)return;
    material.clippingPlanes=on?[new THREE.Plane(new THREE.Vector3(0,-1,0),plan.level)]:null;material.clipShadows=true;material.needsUpdate=true;
   }});
@@ -25,14 +27,16 @@ export function setFlow(model:THREE.Group,on:boolean):void {
 export function addWater(parent: THREE.Group, points: THREE.Vector3[], radius: number, count = 22): void {
  const water = new THREE.Group();water.name='flow-water';parent.add(water);
  pipe(water,points,radius,waterBlue);
- water.traverse(o=>{if(o instanceof THREE.Mesh){const m=o.material as THREE.MeshStandardMaterial;m.roughness=.18;m.metalness=.16;}});
- const geometry=new THREE.SphereGeometry(radius*.19,6,4);
- const particles=new THREE.InstancedMesh(geometry,new THREE.MeshBasicMaterial({color:'#d5efff'}),count);particles.name='water-tracers';water.add(particles);
+ // The labelled flow overlay stays visible through paving and soil in the presentation cutaway.
+ water.traverse(o=>{if(o instanceof THREE.Mesh){const m=o.material as THREE.MeshStandardMaterial;m.color.set(waterBlue);m.emissive.set(waterBlue);m.emissiveIntensity=.25;m.roughness=.4;m.metalness=0;m.depthTest=false;m.depthWrite=false;o.renderOrder=2;}});
+ const geometry=new THREE.ConeGeometry(radius*.65,radius*2.5,6);
+ geometry.rotateX(Math.PI/2);
+ const particles=new THREE.InstancedMesh(geometry,new THREE.MeshBasicMaterial({color:'#123C70',depthTest:false,depthWrite:false}),count);particles.name='water-tracers';particles.frustumCulled=false;particles.renderOrder=3;water.add(particles);
  const lengths=[0];for(let i=1;i<points.length;i++)lengths.push(lengths[i-1]+points[i].distanceTo(points[i-1]));
  streams.set(water,{points,lengths,total:lengths[lengths.length-1],radius,particles});
 }
 export function animateWater(model: THREE.Group, time: number): void {
- const matrix=new THREE.Matrix4(),position=new THREE.Vector3();
+ const matrix=new THREE.Matrix4(),position=new THREE.Vector3(),direction=new THREE.Vector3(),rotation=new THREE.Quaternion(),scale=new THREE.Vector3(1,1,1),forward=new THREE.Vector3(0,0,1);
  model.traverse(object=>{
   const stream=streams.get(object);if(!stream||!object.visible)return;
   for(let i=0;i<stream.particles.count;i++){
@@ -40,7 +44,9 @@ export function animateWater(model: THREE.Group, time: number): void {
    let segment=1;while(segment<stream.lengths.length-1&&stream.lengths[segment]<distance)segment++;
    const span=stream.lengths[segment]-stream.lengths[segment-1];
    position.lerpVectors(stream.points[segment-1],stream.points[segment],span?(distance-stream.lengths[segment-1])/span:0);
-   position.y+=stream.radius*.97;matrix.makeTranslation(position.x,position.y,position.z);stream.particles.setMatrixAt(i,matrix);
+   direction.subVectors(stream.points[segment],stream.points[segment-1]).normalize();
+   rotation.setFromUnitVectors(forward,direction);
+   position.y+=stream.radius*.95;matrix.compose(position,rotation,scale);stream.particles.setMatrixAt(i,matrix);
   }
   stream.particles.instanceMatrix.needsUpdate=true;
  });

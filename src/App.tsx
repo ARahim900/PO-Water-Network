@@ -7,7 +7,7 @@ import ProjectReview from './ProjectReview';
 import CameraControls from './CameraControls';
 import { readSettings, writeSettings } from './urlState';
 import type { CameraAction, ModelSettings, Option, View } from './types';
-const views: {id:View;label:string;short:string;icon:typeof Box}[]=[{id:'network',label:'Zone Five layout',short:'Layout',icon:Layers},{id:'section',label:'Pipe installation',short:'Section',icon:Box},{id:'run',label:'Pipe run with chamber and bend',short:'Run',icon:Route},{id:'tapping',label:'Villa tapping',short:'Tapping',icon:Cable},{id:'weather',label:'Rain & sand',short:'Weather',icon:CloudRain}];
+const views: {id:View;label:string;short:string;icon:typeof Box}[]=[{id:'network',label:'Zone Five layout',short:'Layout',icon:Layers},{id:'section',label:'Pipe installation',short:'Section',icon:Box},{id:'run',label:'Two-sided villa distribution',short:'Run',icon:Route},{id:'tapping',label:'Villa tapping',short:'Tapping',icon:Cable},{id:'weather',label:'Rain & sand',short:'Weather',icon:CloudRain}];
 export default function App() {
  const [settings,setSettings]=useState<ModelSettings>(()=>readSettings());
  const [camera,setCamera]=useState<CameraAction>({kind:'home',serial:0});
@@ -39,9 +39,9 @@ export default function App() {
   Array.from(frame.current?.querySelectorAll<HTMLElement>('button,select')??[]).find(node=>node.getClientRects().length)?.focus();
   return()=>{document.body.style.overflow=overflow;window.removeEventListener('keydown',keydown);expandButton.current?.focus();};
  },[expanded]);
- const patch=(value:Partial<ModelSettings>)=>setSettings(s=>({...s,...value,...(('view' in value||'option' in value||'opened' in value)?{animation:'off' as const}:{})}));
+ const patch=(value:Partial<ModelSettings>)=>setSettings(s=>({...s,...value,...(('view' in value||'option' in value||'opened' in value||value.flow)?{animation:'off' as const}:{}),...(value.animation==='playing'?{flow:false}:{})}));
  const move=(kind:CameraAction['kind'])=>setCamera(c=>({kind,serial:c.serial+1}));
- const selectView=(view:View)=>patch({view,step:view==='tapping'?Math.max(3,settings.step):settings.step});
+ const selectView=(view:View)=>patch({view,step:view==='tapping'?3:settings.step,flow:view==='run'||view==='tapping',flowPaused:false});
  const coversOpen=settings.opened||settings.flow||settings.view==='tapping'&&settings.step>0;
  const toggleCovers=()=>patch({opened:!coversOpen,step:coversOpen?0:Math.max(3,settings.step),flow:false});
  const waterActive=settings.flow||settings.view==='weather'&&settings.weather==='rain';
@@ -58,13 +58,14 @@ export default function App() {
     </div>
     <nav aria-label="Model views" className="viewer-tabs grid shrink-0 grid-cols-5 border-b border-line bg-white max-md:order-4 max-md:border-t max-md:border-b-0">{views.map(({id,label,short,icon:Icon})=><button key={id} aria-label={label} aria-pressed={settings.view===id} onClick={()=>selectView(id)} className={`flex min-h-12 items-center justify-center gap-1 border-b-3 px-1 text-[13px] font-medium md:text-[14px] max-md:flex-col max-md:gap-0 max-md:border-b-0 max-md:border-t-3 max-md:py-1 ${settings.view===id?'border-purple text-purple':'border-transparent text-ink'}`}><Icon size={18}/>{short}</button>)}</nav>
     <div className={expanded?'viewer-stage min-h-0 flex-1 max-md:order-1':'viewer-stage h-[max(560px,80svh)] min-h-0 md:h-[680px] max-md:order-1'}><ModelViewer settings={settings} cameraAction={camera} exportSerial={exportSerial} onComponentSelect={(water,reveal)=>patch({animation:'paused',...water?{flow:true}:{},...reveal?{opened:true,step:Math.max(settings.step,3)}:{}})}/></div>
+    {(settings.view==='run'||settings.view==='tapping')&&<p className="order-2 shrink-0 border-t border-line bg-white px-3 py-2 text-[14px] text-purple md:order-none">{settings.flow?(settings.flowPaused?'Blue flow paused':'Blue flow · see-through'):'Flow hidden'} · Main C → Main A + Main B · Own-side villa services{settings.view==='tapping'&&settings.step<3?' · Connection incomplete':''}<span className="hidden sm:inline"> · Villas informed by photo; dimensions and paving pattern unverified</span></p>}
     <CameraControls move={move}/>
     <div className="viewer-actions flex shrink-0 flex-wrap gap-2 border-t border-line bg-white p-2 max-md:order-3">
      <button aria-pressed={settings.flow} className={`control flex-1 ${settings.flow?'selected':''}`} onClick={()=>patch({flow:!settings.flow})}><Droplets size={18}/>{settings.flow?'Hide flow':'Water flow'}</button>
      {settings.option==='channel'&&settings.view!=='network'&&<button className="control flex-1" onClick={toggleCovers}>{coversOpen?'Lower covers':'Lift covers'}</button>}
      {waterActive?<button className="control min-w-11 px-3" aria-label={settings.flowPaused?'Resume water motion':'Pause water motion'} onClick={pause}>{settings.flowPaused?<Play size={18}/>:<Pause size={18}/>}</button>:settings.option==='channel'&&settings.view!=='network'&&<button className="control min-w-11 px-3" aria-label={settings.animation==='playing'?'Pause cover animation':'Play cover animation'} onClick={()=>patch({animation:settings.animation==='playing'?'paused':'playing'})}>{settings.animation==='playing'?<Pause size={18}/>:<Play size={18}/>}</button>}
     </div>
-    {expanded&&<div className="viewer-mobile-dock order-6 flex shrink-0 gap-2 border-t border-line bg-white p-2 md:hidden"><button className="control flex-1" aria-pressed={viewerControls} onClick={()=>setViewerControls(v=>!v)}>{viewerControls?'Hide controls':'Show controls'}</button><button className="control min-w-12" aria-label="Fit model to screen" onClick={()=>move('home')}>Fit</button><button className="control min-w-12" aria-label="Close full-screen 3D" onClick={()=>setExpanded(false)}><Minimize size={20}/></button></div>}
+    {expanded&&<div className="viewer-mobile-dock order-6 flex shrink-0 gap-2 border-t border-line bg-white p-2 md:hidden"><button className="control flex-1" aria-pressed={viewerControls} onClick={()=>setViewerControls(v=>!v)}>{viewerControls?'Hide controls':'Show controls'}</button>{waterActive&&!viewerControls&&<button className="control min-w-11" aria-label={settings.flowPaused?'Resume water motion':'Pause water motion'} onClick={pause}>{settings.flowPaused?<Play size={18}/>:<Pause size={18}/>}</button>}<button className="control min-w-12" aria-label="Fit model to screen" onClick={()=>move('home')}>Fit</button><button className="control min-w-12" aria-label="Close full-screen 3D" onClick={()=>setExpanded(false)}><Minimize size={20}/></button></div>}
     {expanded&&<p className="viewer-hint shrink-0 px-3 py-1 text-[14px] text-ink max-md:order-6">Drag to rotate · Pinch to zoom · Concept only</p>}
    </div>
    <aside className="px-4 md:px-0">
