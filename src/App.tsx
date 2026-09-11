@@ -49,7 +49,7 @@ export default function App() {
  return <main className="mx-auto max-w-[1536px]">
   <header className="flex items-center justify-between gap-2 bg-purple px-4 py-3 text-white md:px-8"><span className="eyebrow">Muscat Bay</span><span className="text-[14px]">Zone Five · Concept review</span></header>
   <section className="flex items-center justify-between gap-3 px-4 py-3 md:px-8 md:py-5"><div><h1 className="text-xl md:text-3xl">Water network explorer</h1><p className="mt-1 hidden md:block">Inspect both installation options. Select a component to fly closer.</p></div><div className="flex flex-col items-end gap-1"><div className="flex gap-2"><button aria-label="Open full-screen 3D" onClick={()=>{setViewerControls(false);setExpanded(true);}} className="control md:hidden"><Maximize size={20}/></button><button aria-label="Copy link to this view" onClick={copyLink} className="control"><Link2 size={20}/><span className="hidden sm:inline">Copy link</span></button><button aria-label="Download static 3D view" onClick={()=>setExportSerial(v=>v+1)} className="control"><Download size={20}/><span className="hidden sm:inline">3D export</span></button></div><p aria-live="polite" className="min-h-4 text-right text-[13px] text-purple">{linkNote}</p></div></section>
-  <section className="grid gap-4 pb-5 md:px-8 xl:grid-cols-[minmax(0,1fr)_315px]">
+  <section className="grid gap-4 pb-5 md:px-8 2xl:grid-cols-[minmax(0,1fr)_315px]">
    <div ref={frame} role={expanded?'dialog':undefined} aria-modal={expanded||undefined} aria-label={expanded?'Expanded 3D explorer':undefined} className={expanded?`explorer-expanded ${viewerControls?'':'viewer-compact'} fixed inset-0 z-[2147483646] flex h-dvh min-h-0 flex-col bg-paper`:'flex min-w-0 flex-col border-y border-line bg-paper md:rounded-[10.5px] md:border'}>
     {/* On a phone the model comes first and every control stacks beneath it, inside thumb reach; md and up keep controls above. */}
     <div className="viewer-options flex shrink-0 items-center gap-2 border-b border-line bg-white p-2 max-md:order-5 max-md:border-t max-md:border-b-0">
@@ -68,8 +68,8 @@ export default function App() {
     {expanded&&<p className="viewer-hint shrink-0 px-3 py-1 text-[14px] text-ink max-md:order-6">Drag to rotate · Pinch to zoom · Concept only</p>}
    </div>
    <aside className="px-4 md:px-0">
-    <button className="control w-full justify-between xl:hidden" aria-expanded={detailsOpen} aria-controls="view-details" onClick={()=>setDetailsOpen(v=>!v)}>View controls & notes<ChevronDown size={18} className={detailsOpen?'rotate-180':''}/></button>
-    <div id="view-details" className={`${detailsOpen?'block':'hidden'} pt-4 xl:block xl:pt-0`}><ViewDetails settings={settings} patch={patch} move={move}/></div>
+    <button className="control w-full justify-between 2xl:hidden" aria-expanded={detailsOpen} aria-controls="view-details" onClick={()=>setDetailsOpen(v=>!v)}>View controls & notes<ChevronDown size={18} className={detailsOpen?'rotate-180':''}/></button>
+    <div id="view-details" className={`${detailsOpen?'block':'hidden'} pt-4 2xl:block 2xl:pt-0`}><ViewDetails settings={settings} patch={patch} move={move}/></div>
    </aside>
   </section>
   <details className="border-t border-line bg-white"><summary className="px-4 py-4 font-semibold text-purple md:px-8">Option comparison & project evidence</summary><ProjectReview/><EvidencePanel/></details>

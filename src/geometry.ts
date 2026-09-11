@@ -35,11 +35,21 @@ export function arrow(group: THREE.Group, start: number[], end: number[], colour
  group.add(new THREE.ArrowHelper(dir.clone().normalize(), a, dir.length(), colour, size, size * 0.55));
 }
 export function disposeGroup(group: THREE.Group): void {
+ const geometries = new Set<THREE.BufferGeometry>();
+ const materials = new Set<THREE.Material>();
+ const textures = new Set<THREE.Texture>();
  group.traverse(object => {
+  if (object instanceof THREE.InstancedMesh) object.dispose();
   if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Sprite) {
-   if ('geometry' in object) object.geometry.dispose();
-   const materials = Array.isArray(object.material) ? object.material : [object.material];
-   for (const m of materials) { if ('map' in m && m.map instanceof THREE.Texture) m.map.dispose(); if ('bumpMap' in m && m.bumpMap instanceof THREE.Texture && (!('map' in m) || m.bumpMap !== m.map)) m.bumpMap.dispose(); m.dispose(); }
+   // Three shares sprite and arrow geometry across all models for the renderer's lifetime.
+   if (!(object instanceof THREE.Sprite) && !(object.parent instanceof THREE.ArrowHelper)) geometries.add(object.geometry);
+   for (const material of Array.isArray(object.material) ? object.material : [object.material]) materials.add(material);
   }
  });
+ for (const material of materials) {
+  for (const value of Object.values(material)) if (value instanceof THREE.Texture) textures.add(value);
+  material.dispose();
+ }
+ for (const texture of textures) texture.dispose();
+ for (const geometry of geometries) geometry.dispose();
 }

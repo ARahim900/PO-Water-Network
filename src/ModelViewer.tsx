@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Tags } from 'lucide-react';
-import { createGraphicsRenderer, type GraphicsRenderer } from './graphicsRenderer';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { createGraphicsRenderer, type GraphicsRenderer } from './graphicsRenderer';
 import { buildNetwork } from './networkScene';
 import { buildDetail } from './detailScene';
 import { buildRun } from './runScene';
@@ -52,7 +52,7 @@ async function exportModel(engine: Engine, settings: ModelSettings): Promise<voi
 }
 export default function ModelViewer({ settings, cameraAction, exportSerial, onComponentSelect }: ViewerProps) {
  const host = useRef<HTMLDivElement>(null); const engine = useRef<Engine|null>(null); const current = useRef(settings);
- const [showLabels,setShowLabels]=useState(()=>window.matchMedia('(min-width: 768px)').matches);
+ const [showLabels,setShowLabels]=useState(()=>navigator.maxTouchPoints===0&&!window.matchMedia('(any-pointer: coarse)').matches&&window.matchMedia('(min-width: 1024px)').matches);
  const labelVisibility=useRef(showLabels);labelVisibility.current=showLabels;
  const [labels,setLabels] = useState<LabelFrame>({width:0,height:0,points:[]});
  const [items,setItems]=useState<ComponentItem[]>([]);const [selected,setSelected]=useState('');
@@ -61,24 +61,39 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
  const clock=useRef(0);const lastLabels=useRef('');
  const [error,setError] = useState(''); const [exporting,setExporting] = useState(false);
  const [graphicsAttempt,setGraphicsAttempt]=useState(0);
+ const [graphicsRun,setGraphicsRun]=useState(0);
+ const recoveryCount=useRef(0);
  const [graphicsStatus,setGraphicsStatus]=useState('');
+ const [graphics,setGraphics]=useState<GraphicsRenderer|null>(null);
+ const [graphicsFailure,setGraphicsFailure]=useState(false);
+ const [diagnostics,setDiagnostics]=useState<string[]>([]);
  const dirty=useRef(true);
  const tour=useRef<NetworkTour|null>(null);const [tourStatus,setTourStatus]=useState('');
  current.current=settings;
  useEffect(()=> {
-  const container=host.current; if(!container) return;
+  let cancelled=false,settled=false,retry=0;
   const touch=window.matchMedia('(any-pointer: coarse)').matches||navigator.maxTouchPoints>0;
-  let renderer: GraphicsRenderer;
-  try { renderer=createGraphicsRenderer(graphicsAttempt,touch); }
-  catch (error) {
-   if(graphicsAttempt>=2){console.error('Compatibility graphics failed',error);setError('The compatibility model could not start. Retry graphics to recover.');return;}
-   console.warn('Graphics startup failed; scheduling recovery.', error);
-   setGraphicsStatus('Starting the model in a lighter graphics mode…');
-   const retry=window.setTimeout(()=>setGraphicsAttempt(value=>value+1),graphicsAttempt===0?750:1500);
-   return ()=>window.clearTimeout(retry);
-  }
-  setGraphicsStatus(renderer.webgl?'':'Compatibility 3D · Simplified surfaces; water cutaways unavailable');
-  renderer.domElement.dataset.graphicsMode=renderer.webgl?'webgl':'compatibility';
+  setGraphics(null);setGraphicsFailure(false);setError('');setGraphicsStatus('Starting 3D graphics…');
+  if(graphicsAttempt===0)setDiagnostics([]);
+  const fail=(error:unknown)=>{
+   if(cancelled||settled)return;
+   settled=true;window.clearTimeout(timeout);
+   const message=error instanceof Error?error.message:String(error);
+   console.warn('Graphics startup failed',message);
+   setDiagnostics(previous=>[...previous,`${graphicsAttempt===1?'WebGPU':'WebGL 2'}: ${message}`]);
+   if(graphicsAttempt>=2){setGraphicsFailure(true);setGraphicsStatus('');return;}
+   retry=window.setTimeout(()=>setGraphicsAttempt(value=>value+1),750);
+  };
+  const timeout=window.setTimeout(()=>fail(new Error('Graphics startup timed out.')),10000);
+  void createGraphicsRenderer(graphicsAttempt,touch).then(renderer=>{
+   if(cancelled||settled){renderer.dispose();return;}
+   settled=true;window.clearTimeout(timeout);setGraphics(renderer);setGraphicsStatus('');
+  }).catch(fail);
+  return()=>{cancelled=true;window.clearTimeout(retry);window.clearTimeout(timeout);};
+ },[graphicsAttempt,graphicsRun]);
+ useEffect(()=> {
+  const container=host.current;const renderer=graphics;if(!container||!renderer)return;
+  renderer.domElement.dataset.graphicsMode=renderer.mode;
   dirty.current=true;
   renderer.domElement.setAttribute('aria-label','Interactive 3D model. Use the adjacent view and camera buttons, or drag to rotate and scroll to zoom.');
   renderer.domElement.setAttribute('role','img'); container.appendChild(renderer.domElement);
@@ -91,7 +106,7 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   const resize=new ResizeObserver(()=>{const w=container.clientWidth,h=container.clientHeight;if(!w||!h)return;renderer.resize(w,h);dirty.current=true;camera.aspect=w/h;camera.updateProjectionMatrix();if(!measured&&engine.current){measured=true;resetCamera(engine.current,current.current);const initial=engine.current.flight;if(initial){camera.position.copy(initial.to);controls.target.copy(initial.targetTo);engine.current.flight=null;controls.update();}}});resize.observe(container);
   let visible=true;const intersection=new IntersectionObserver(entries=>{visible=entries[0]?.isIntersecting??true;});intersection.observe(container);
   const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
-  const markDirty=()=>{dirty.current=true;};controls.addEventListener('change',markDirty);
+  const markDirty=()=>{dirty.current=true;};controls.addEventListener('change',markDirty);reduced.addEventListener('change',markDirty);
   const cancelFlight=()=>{if(engine.current)engine.current.flight=null;tour.current=null;setTourStatus('');};controls.addEventListener('start',cancelFlight);
   const pointerStart=new THREE.Vector2();const pointers=new Set<number>();let multiTouch=false;
   const pointerDown=(event:PointerEvent)=>{pointers.add(event.pointerId);if(pointers.size===1){pointerStart.set(event.clientX,event.clientY);multiTouch=false;}else multiTouch=true;};
@@ -107,14 +122,34 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
    }
   };
   renderer.domElement.addEventListener('pointercancel',pointerCancel);renderer.domElement.addEventListener('pointerdown',pointerDown);renderer.domElement.addEventListener('pointerup',pointerUp);
-  let frame=0,lastTime=performance.now(),counter=0,waterTime=0,lastPaint=0;
+  let frame=0,lastTime=performance.now(),counter=0,waterTime=0,lastGpuPaint=0;
   let contextPaused=false,recoveryTimer=0;
+  const drawingFailed=(error:unknown)=>{
+   console.error('Model rendering failed',error);contextPaused=true;
+   setDiagnostics(previous=>[...previous,error instanceof Error?error.message:String(error)]);
+   setGraphicsStatus('');setGraphicsFailure(true);
+  };
   const render=()=>{
    frame=requestAnimationFrame(render);const now=performance.now();
    if(!visible||document.hidden||contextPaused){lastTime=now;return;}
-   if(!renderer.webgl&&now-lastPaint<1000/12)return;
+
+   if(renderer.mode==='webgpu'&&now-lastGpuPaint<1000/30)return;
    const dt=Math.min(.1,(now-lastTime)/1000);lastTime=now;
    const model=engine.current?.model;
+   const config=current.current;
+   const cover=model?.getObjectByName('movable-covers');
+   const coverTarget=((config.view==='tapping'?config.step>0:config.opened)||config.flow)?.72:0;
+   const movingCover=!!cover&&(config.animation==='off'||reduced.matches)&&Math.abs(cover.position.y-coverTarget)>.001;
+   const animating=!reduced.matches&&(!!engine.current?.flight||!!tour.current||config.animation==='playing'||!config.flowPaused&&(config.flow||config.view==='weather'&&config.weather==='rain'));
+   const moved=controls.update();
+   if(!dirty.current&&!moved&&!animating&&!movingCover&&!engine.current?.flight){
+    if(renderer.mode==='webgpu'){
+     // Keep the WebGPU canvas presented without recomputing idle model animations.
+     try{renderer.render(scene,camera);lastGpuPaint=now;}
+     catch(error){drawingFailed(error);}
+    }
+    return;
+   }
    if(model){
     const config=current.current;const covers=model.getObjectByName('movable-covers');
     if(covers){
@@ -141,24 +176,21 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
     renderer.domElement.dataset.camera=camera.position.toArray().map(n=>n.toFixed(3)).join(',');
     renderer.domElement.dataset.flowTime=waterTime.toFixed(3);
     model.updateMatrixWorld(true);
-    if(labelVisibility.current&&counter++%6===0){const next=projectAnnotations(model,camera,container.clientWidth,container.clientHeight);const key=JSON.stringify(next);if(key!==lastLabels.current){lastLabels.current=key;setLabels(next);}}
+    if(labelVisibility.current&&(dirty.current||counter++%6===0)){const next=projectAnnotations(model,camera,container.clientWidth,container.clientHeight);const key=JSON.stringify(next);if(key!==lastLabels.current){lastLabels.current=key;setLabels(next);}}
    }
-   const moved=controls.update();
-   const config=current.current;
-   const animating=!reduced.matches&&(!!engine.current?.flight||!!tour.current||config.animation==='playing'||!config.flowPaused&&(config.flow||config.view==='weather'&&config.weather==='rain'));
-   const cover=model?.getObjectByName('movable-covers');
-   const coverTarget=((config.view==='tapping'?config.step>0:config.opened)||config.flow)?.72:0;
-   const movingCover=!!cover&&config.animation==='off'&&Math.abs(cover.position.y-coverTarget)>.001;
-   if(dirty.current||moved||animating||movingCover){
-    try {renderer.render(scene,camera);dirty.current=false;lastPaint=now;}
-    catch(error){console.error('Model rendering failed',error);contextPaused=true;setError('The model could not be drawn. Retry graphics to recover.');}
-   }
+   controls.update();
+   try {renderer.render(scene,camera);dirty.current=false;lastGpuPaint=now;}
+   catch(error){drawingFailed(error);}
   };render();
   const contextLost=(event: Event)=>{
    event.preventDefault();contextPaused=true;
    setGraphicsStatus('Restoring graphics…');
    window.clearTimeout(recoveryTimer);
-   recoveryTimer=window.setTimeout(()=>setGraphicsAttempt(value=>Math.min(2,value+1)),2000);
+   recoveryTimer=window.setTimeout(()=>{
+    recoveryCount.current++;
+    if(recoveryCount.current>2){setGraphics(null);setGraphicsFailure(true);setGraphicsStatus('');return;}
+    setGraphicsAttempt(value=>value<2?value+1:0);
+   },2000);
   };
   const contextRestored=()=>{
    window.clearTimeout(recoveryTimer);contextPaused=false;
@@ -178,13 +210,13 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
    cancelAnimationFrame(frame);window.clearTimeout(recoveryTimer);
    resize.disconnect();intersection.disconnect();
    document.removeEventListener('visibilitychange',resume);window.removeEventListener('pageshow',resume);
-   controls.removeEventListener('change',markDirty);controls.removeEventListener('start',cancelFlight);controls.dispose();
+   reduced.removeEventListener('change',markDirty);controls.removeEventListener('change',markDirty);controls.removeEventListener('start',cancelFlight);controls.dispose();
    renderer.domElement.removeEventListener('pointercancel',pointerCancel);renderer.domElement.removeEventListener('pointerdown',pointerDown);renderer.domElement.removeEventListener('pointerup',pointerUp);
    renderer.domElement.removeEventListener('webglcontextlost',contextLost);renderer.domElement.removeEventListener('webglcontextrestored',contextRestored);
    if(engine.current)disposeGroup(engine.current.model);
    light.shadow.dispose();renderer.dispose();engine.current=null;
   };
- },[graphicsAttempt]);
+ },[graphics]);
  useEffect(()=> {
   const e=engine.current;if(!e)return;
   dirty.current=true;
@@ -192,10 +224,10 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   const oldCover=e.model.getObjectByName('movable-covers')?.position.y;
   e.scene.remove(e.model);disposeGroup(e.model);
   try {e.model=settings.view==='network'?buildNetwork(settings):settings.view==='run'?buildRun(settings):buildDetail(settings);e.scene.add(e.model);const sun=e.scene.getObjectByName('sunlight');if(sun instanceof THREE.DirectionalLight)sun.castShadow=settings.view!=='network';e.model.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=settings.view!=='network';o.receiveShadow=true;}});setItems(components(e.model));setError('');const focused=e.model.getObjectByName(selectedRef.current);if(focused)e.flight=componentFlight(e.camera,e.controls,focused);else if(selectedRef.current){selectedRef.current='';setSelected('');resetCamera(e,current.current);}const cover=e.model.getObjectByName('movable-covers');if(cover)cover.position.y=oldCover??0;}
-  catch(err){setError(err instanceof Error?err.message:'The model could not be generated.');}
- },[graphicsAttempt,settings.option,settings.view,settings.opened,settings.weather,settings.step,settings.showBase,settings.showAssets,settings.selectedPath]);
- useEffect(()=>{dirty.current=true;if(engine.current)setFlow(engine.current.model,settings.flow);},[settings.flow,graphicsAttempt]);
- useEffect(()=>{dirty.current=true;if(settings.view==='network')engine.current?.model.traverse(o=>{if(o instanceof THREE.Sprite)o.visible=showLabels;});},[showLabels,settings.view,settings.option,settings.selectedPath,settings.showBase,settings.showAssets,settings.flow,graphicsAttempt]);
+  catch(err){console.error('Model generation failed',err);setGraphicsFailure(false);setError(err instanceof Error?err.message:'The model could not be generated.');}
+ },[graphics,settings.option,settings.view,settings.opened,settings.weather,settings.step,settings.showBase,settings.showAssets,settings.selectedPath]);
+ useEffect(()=>{dirty.current=true;if(engine.current)setFlow(engine.current.model,settings.flow);},[settings.flow,graphics]);
+ useEffect(()=>{dirty.current=true;if(settings.view==='network')engine.current?.model.traverse(o=>{if(o instanceof THREE.Sprite)o.visible=showLabels;});},[showLabels,settings.view,settings.option,settings.selectedPath,settings.showBase,settings.showAssets,settings.flow,graphics]);
  useEffect(()=>{if(settings.animation==='off')clock.current=0;if(settings.animation==='playing'&&clock.current===0){const height=engine.current?.model.getObjectByName('movable-covers')?.position.y??0;clock.current=Math.acos(1-Math.min(1,height/.72)*2)*4/Math.PI;}},[settings.animation]);
  useEffect(()=>{selectedRef.current='';setSelected('');if(engine.current)resetCamera(engine.current,current.current);},[settings.view,settings.option,settings.selectedPath]);
  useEffect(()=> {
@@ -209,8 +241,8 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
  },[cameraAction]);
  useEffect(()=> {
   if(!exportSerial)return;
-  if(!engine.current){setError('The model is still starting. Try the download again when it appears.');return;}
-  setExporting(true);void exportModel(engine.current,current.current).catch(err=>{console.error('Model export failed',err);setError('Model export failed. Please reload and try again.');}).finally(()=>setExporting(false));
+  if(!engine.current){setGraphicsFailure(false);setError('The model is still starting. Try the download again when it appears.');return;}
+  setExporting(true);void exportModel(engine.current,current.current).catch(err=>{console.error('Model export failed',err);setGraphicsFailure(false);setError('Model export failed. Please reload and try again.');}).finally(()=>setExporting(false));
  },[exportSerial]);
  const select=(rawId:string)=>{
   const id=rawId==='cover'?'movable-covers':rawId==='flex'?'service':rawId;const e=engine.current;if(!e)return;
@@ -239,8 +271,9 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
    <div ref={host} className="absolute inset-0 touch-none"/>
    {tourStatus&&<p role="status" className="pointer-events-none absolute inset-x-2 top-2 rounded-[5px] bg-white px-3 py-1 text-[14px] text-purple">{tourStatus}</p>}
    {showLabels&&settings.view!=='network'&&<AnnotationOverlay frame={labels} onSelect={select}/>}
-   {graphicsStatus&&<div role="status" className="absolute inset-x-2 bottom-2 flex flex-wrap items-center justify-between gap-2 rounded-[5px] border border-line bg-white p-2 text-[14px] text-purple"><span>{graphicsStatus}</span>{graphicsAttempt>=2&&<button className="control" onClick={()=>{setError('');setGraphicsAttempt(0);}}>Retry full graphics</button>}</div>}
-   {error&&<div role="alert" className="absolute inset-x-4 top-4 panel p-4 text-purple">{error}<button className="control ml-2" onClick={()=>{setError('');setGraphicsAttempt(value=>value===2?0:value+1);}}>Retry graphics</button></div>}
+   {graphicsStatus&&<p role="status" className="absolute inset-x-2 bottom-2 rounded-[5px] border border-line bg-white p-3 text-[14px] text-purple">{graphicsStatus}</p>}
+   {graphicsFailure&&<div role="alert" className="absolute inset-0 flex items-center justify-center overflow-auto bg-paper p-6"><div className="panel max-w-lg space-y-4 p-5"><h2 className="text-xl">3D graphics are unavailable</h2><p>If this page opened inside another app, open its link directly in Safari. If Safari also fails, check the graphics details below.</p><div className="flex flex-wrap gap-2"><a className="control" href={window.location.href} target="_blank" rel="noopener noreferrer">Open browser view</a><button className="control" onClick={()=>{recoveryCount.current=0;setGraphicsAttempt(0);setGraphicsRun(value=>value+1);}}>Retry 3D</button></div><details><summary>Graphics details</summary><ul className="mt-2 space-y-2 break-words text-[14px]">{diagnostics.map((message,index)=><li key={index}>{message}</li>)}</ul></details></div></div>}
+   {error&&!graphicsFailure&&<div role="alert" className="absolute inset-x-4 top-4 panel p-4 text-purple">{error}</div>}
    {exporting&&<div role="status" className="absolute bottom-4 left-4 panel p-3">Preparing 3D download…</div>}
   </div>
   {settings.view==='tapping'&&settings.option==='channel'&&<p className="shrink-0 border-t border-line bg-white px-3 py-1 text-[14px] text-purple">Straight service concept · Movement design outstanding</p>}
