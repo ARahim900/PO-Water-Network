@@ -33,11 +33,22 @@ export function readSettings(hash: string = window.location.hash): ModelSettings
  *  iframe, an embedded viewer — refuse history writes; the model must still work there, so failure is ignored. */
 export function writeSettings(s: ModelSettings): void {
  const q = new URLSearchParams();
+ const section = readSection();
+ if(section) q.set('s',section); // the decision-support section is kept so a link opens where the presenter left it
  q.set('option',s.option); q.set('view',s.view);
  if(s.view === 'tapping') q.set('step',String(s.step));
  if(s.view === 'weather') q.set('weather',s.weather);
  if(s.view === 'network'){ q.set('route',s.selectedPath); q.set('base',s.showBase?'1':'0'); q.set('assets',s.showAssets?'1':'0'); }
  else if(s.opened) q.set('open','1');
  if(s.flow || s.view === 'run' || s.view === 'tapping') q.set('flow',s.flow?'1':'0');
+ try { window.history.replaceState(null,'',`#${q}`); } catch { /* history is unavailable in this host */ }
+}
+/** The decision-support section (`s=`) travels in the same hash as the 3D view so one link restores both. */
+export function readSection(hash: string = window.location.hash): string {
+ return new URLSearchParams(hash.replace(/^#/,'')).get('s') ?? '';
+}
+export function writeSection(section: string): void {
+ const q = new URLSearchParams(window.location.hash.replace(/^#/,''));
+ q.set('s',section);
  try { window.history.replaceState(null,'',`#${q}`); } catch { /* history is unavailable in this host */ }
 }
