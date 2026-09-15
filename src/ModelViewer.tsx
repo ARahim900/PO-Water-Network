@@ -267,13 +267,13 @@ export default function ModelViewer({ settings, cameraAction, exportSerial, onCo
   e.flight=boundsFlight(e.camera,e.controls,first.bounds);
   if(play&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){e.flight.duration=2500;tour.current={stops,index:0,nextAt:performance.now()+4500};setTourStatus(`1/${stops.length} · ${first.title}`);}
  };
- return <div className="flex h-full min-h-0 w-full flex-col">
-  <div className="viewer-component-picker flex shrink-0 items-center gap-2 border-b border-line bg-white p-2">
+ return <div className="model-viewer flex h-full min-h-0 w-full flex-col">
+  <div className="viewer-component-picker flex shrink-0 items-center gap-2 border-b border-line bg-white p-2.5">
    <label htmlFor="component-focus" className="sr-only">Fly to component</label>
-   <select id="component-focus" value={selected} onChange={event=>select(event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-[5px] border border-line bg-white px-2 text-base"><option value="">Fly to a component…</option>{items.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select>
+   <select id="component-focus" value={selected} onChange={event=>select(event.target.value)} className="component-select min-h-12 min-w-0 flex-1 rounded-[5px] border border-line bg-white px-3 text-[15px] font-medium text-purple"><option value="">Fly to a component…</option>{items.map(item=><option key={item.id} value={item.id}>{item.title}</option>)}</select>
    <button className={`control min-w-11 px-2 ${showLabels?'selected':''}`} aria-label="Toggle model labels" aria-pressed={showLabels} title="Toggle model labels" onClick={()=>setShowLabels(v=>!v)}><Tags size={20}/></button>
   </div>
-  {settings.view==='network'&&<div className="viewer-tour-controls flex shrink-0 items-center gap-2 border-b border-line bg-white px-2 py-1"><button className="control px-2" onClick={()=>overview()}>Full layout</button><button className={`control px-2 ${tourStatus?'selected':''}`} aria-pressed={!!tourStatus} onClick={()=>overview(true)}>{tourStatus?'Stop flyover':'Start full flyover'}</button></div>}
+  {settings.view==='network'&&<div className="viewer-tour-controls flex shrink-0 items-center gap-2 border-b border-line bg-white px-2.5 py-2"><button className="control px-3" onClick={()=>overview()}>Full layout</button><button className={`control px-3 ${tourStatus?'selected':''}`} aria-pressed={!!tourStatus} onClick={()=>overview(true)}>{tourStatus?'Stop flyover':'Start full flyover'}</button></div>}
   <div className="relative min-h-0 flex-1">
    <div ref={host} className="absolute inset-0 touch-none"/>
    {tourStatus&&<p role="status" className="pointer-events-none absolute inset-x-2 top-2 rounded-[5px] bg-white px-3 py-1 text-[14px] text-purple">{tourStatus}</p>}

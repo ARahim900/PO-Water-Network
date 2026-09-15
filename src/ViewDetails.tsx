@@ -7,7 +7,7 @@ export default function ViewDetails({settings,patch,move}:Props){
  const info=caption(settings);
  const coversOpen=settings.opened||settings.flow;
  const toggleCovers=()=>patch({opened:!coversOpen,flow:false});
- return <div className="flex flex-col gap-5">
+ return <div className="view-details flex flex-col gap-5">
     <div aria-live="polite"><h2 className="text-2xl leading-snug">{info.title}</h2><p className="mt-3">{info.body}</p></div>
     {settings.view==='tapping'&&<p><strong>Orientation:</strong> the saddle sits 45° from the crown towards the villa. A smooth, factory-formed outlet sweep returns to the unchanged wall seal and meter. Exact fitting dimensions, supports and saddle loads require verification.</p>}
     {settings.view==='section'&&<p><strong>Paving reference:</strong> muted warm-grey units informed by the Zone Five photograph. Rectangular units follow the closer photograph; exact dimensions and laying details remain unverified. Green fibre covers remain separate.</p>}
